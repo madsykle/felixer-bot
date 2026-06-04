@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Test caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Images
+*.png
+*.jpg
+*.jpeg
+
+# IDEs
+.idea/
+.vscode/
