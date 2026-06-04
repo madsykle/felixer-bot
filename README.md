@@ -1,4 +1,4 @@
-# 🎬 Pahe Telegram Bot
+# 🎬 Felixer Bot
 
 A powerful Telegram bot designed to let you search, browse, and securely fetch direct download links for movies and TV shows from **Pahe.ink** and **PSA.wf**. Say goodbye to annoying ads, malicious pop-ups, and endless shortener loops—this bot completely bypasses them for you using headless browser automation and Cloudflare bypass techniques!
 
@@ -19,8 +19,8 @@ A powerful Telegram bot designed to let you search, browse, and securely fetch d
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/pahe-telegram-bot.git
-   cd pahe-telegram-bot
+   git clone https://github.com/madsykle/felixer-bot.git
+   cd felixer-bot
    ```
 
 2. **Install Python dependencies:**

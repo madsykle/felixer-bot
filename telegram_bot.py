@@ -1,5 +1,5 @@
 """
-Pahe Telegram Bot - Interactive Button Flow
+Felixer Bot - Interactive Button Flow
 """
 import asyncio
 import hashlib
@@ -586,7 +586,7 @@ def _build_menu(buttons, n_cols):
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "🎬 **Welcome to Pahe Bot!**\n\n"
+        "🎬 **Welcome to Felixer Bot!**\n\n"
         "Just **type the name of a movie or TV show** below to search for it.\n"
         "I'll give you buttons to select the quality, choose a download link, and automatically bypass the ads!"
     )
