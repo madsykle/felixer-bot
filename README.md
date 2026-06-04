@@ -1,5 +1,8 @@
 # 🎬 Felixer Bot
 
+> **Note:** 🤖 **Vibecoded & Human-Tested**
+> This project is entirely "vibecoded" (AI-generated) but has been rigorously tested and validated by a human to ensure complete functionality, security, and stability!
+
 A powerful Telegram bot designed to let you search, browse, and securely fetch direct download links for movies and TV shows from **Pahe.ink** and **PSA.wf**. Say goodbye to annoying ads, malicious pop-ups, and endless shortener loops—this bot completely bypasses them for you using headless browser automation and Cloudflare bypass techniques!
 
 ## ✨ Features
