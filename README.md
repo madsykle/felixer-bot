@@ -1,17 +1,17 @@
 # 🎬 Felixer Bot
 
 > **Note:** 🤖 **Vibecoded & Human-Tested**
-> This project is entirely "vibecoded" (AI-generated) but has been rigorously tested and validated by a human to ensure complete functionality, security, and stability!
+> I built this mostly through "vibecoding" with AI, but I've personally run the code, tested it heavily, and made sure it's actually stable for production.
 
-A powerful Telegram bot designed to let you search, browse, and securely fetch direct download links for movies and TV shows from **Pahe.ink** and **PSA.wf**. Say goodbye to annoying ads, malicious pop-ups, and endless shortener loops—this bot completely bypasses them for you using headless browser automation and Cloudflare bypass techniques!
+I got tired of clicking through ten pages of ads and CAPTCHAs just to get a download link from Pahe or PSA. So I made a Telegram bot that does the dirty work. 
 
-## ✨ Features
-- 🔍 **Interactive Search**: Search movies/series natively in Telegram and select titles using sleek inline buttons.
-- 💾 **Resolution Selection**: Shows available resolutions (720p, 1080p, 2160p), codecs (HEVC, AVC), and host options (Mega, Pixeldrain, Google Drive, etc.).
-- 🚀 **Universal Ad-Bypasser**: Automatically hops through annoying interstitial links (ouo.io, teknoasian, spacetica, go2.pics, blogmystt, linegee, and more) to extract the pure final destination link.
-- 🛡️ **Anti-Bot Circumvention**: Utilizes a combination of **Playwright** + Greasemonkey Userscripts + **FlareSolverr** to solve complex Cloudflare Turnstile captchas and bot protections.
-- 🚦 **Concurrency Control**: Built-in async semaphore limit to prevent your server from running out of RAM/CPU during high bot traffic.
-- 🔁 **Recursive Ouo.io Resolution**: Natively traces down complex multi-hop `ouo.io` and `ouo.press` links to extract the final host.
+You just search for a movie or show in Telegram. The bot hits **Pahe.ink** or **PSA.wf**, scrapes the releases, and lets you pick your resolution. Once you pick a link, it spins up a headless browser (Playwright), punches through Cloudflare using FlareSolverr, runs a few userscripts to skip the countdowns, and hands you the clean Mega or Pixeldrain link. No pop-ups. No redirect loops.
+
+## What it actually does
+- **Searches inline**: Find stuff directly in Telegram.
+- **Grabs the real links**: It chews through `ouo.io`, `teknoasian`, `spacetica`, and all those other annoying shorteners. If a link has three redirects nested inside each other, the bot just follows them until it hits the actual filehost.
+- **Bypasses Cloudflare**: PSA and Pahe love to block bots. We get around this using FlareSolverr and Playwright stealth.
+- **Won't crash your server**: It uses an async semaphore so you don't accidentally spawn 50 headless Chrome instances and blow up your RAM.
 
 ## 🛠️ Requirements
 - Python 3.10+
