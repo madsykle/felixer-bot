@@ -2292,12 +2292,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             progress_task = asyncio.create_task(progress_indicator(do_edit, f"⏳ Bypassing link for **{link['name']}**..."))
             
             try:
-                final_url = await do_smart_bypass(original_url)
-            finally:
-                progress_task.cancel()
+                try:
+                    final_url = await do_smart_bypass(original_url)
+                finally:
+                    progress_task.cancel()
                 
-            await database.increment_stat('bypasses')
-                
+                await database.increment_stat('bypasses')
                 await database.put_cached_link(original_url, final_url)
                 
                 buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
@@ -2401,7 +2401,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"⏳ Bypassing PSA link for **{link['name']}**... Please wait ~20s", parse_mode=ParseMode.MARKDOWN)
             
             try:
-                final_url = await do_psa_bypass(original_url)
+                try:
+                    final_url = await do_psa_bypass(original_url)
+                finally:
+                    progress_task.cancel()
+                    
                 await database.increment_stat('bypasses')
                 
                 if not any(d in final_url for d in TERMINAL_DOMAINS):
@@ -2456,11 +2460,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 progress_task = asyncio.create_task(progress_indicator(do_edit, f"⏳ Refreshing bypass for **{link['name']}**..."))
                 
                 try:
-                    final_url = await do_smart_bypass(original_url)
-                finally:
-                    progress_task.cancel()
-                    
-                await database.put_cached_link(original_url, final_url)
+                    try:
+                        final_url = await do_smart_bypass(original_url)
+                    finally:
+                        progress_task.cancel()
+                        
+                    await database.put_cached_link(original_url, final_url)
                     buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
                     reply_markup = InlineKeyboardMarkup(buttons)
                     await query.edit_message_text(
@@ -2496,9 +2501,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 progress_task = asyncio.create_task(progress_indicator(do_edit, f"⏳ Refreshing PSA bypass for **{link['name']}**..."))
                 
                 try:
-                    final_url = await do_psa_bypass(original_url)
-                finally:
-                    progress_task.cancel()
+                    try:
+                        final_url = await do_psa_bypass(original_url)
+                    finally:
+                        progress_task.cancel()
+                        
                     if not any(d in final_url for d in TERMINAL_DOMAINS):
                         btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve in Browser", url=final_url)]])
                         await query.edit_message_text(
