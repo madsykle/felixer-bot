@@ -1536,7 +1536,7 @@ E = html.escape
 def _build_menu(buttons, n_cols):
     return [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
 
-async def show_pahe_details(edit_func, pid: int, context: ContextTypes.DEFAULT_TYPE):
+async def show_pahe_details(edit_func, pid: int, context: ContextTypes.DEFAULT_TYPE, user_id: int):
     details = await api_detail(pid)
     
     msg_text = f"🎬 **{details['title']}**"
@@ -1574,12 +1574,20 @@ async def show_pahe_details(edit_func, pid: int, context: ContextTypes.DEFAULT_T
         
     context.user_data['groups'] = groups
     
+    pref_res = await database.get_user_setting(user_id, "pref_res", "Ask")
+    filtered_keys = [k for k in groups.keys() if pref_res == "Ask" or pref_res in k]
+    if not filtered_keys:
+        filtered_keys = list(groups.keys())
+        
     buttons = []
-    for k in groups.keys():
+    for k in filtered_keys:
         # use md5 hash for callback data to avoid 64 byte limit
         h = hashlib.md5(k.encode()).hexdigest()[:8]
         context.user_data[f"grp_{h}"] = k
         buttons.append(InlineKeyboardButton(k, callback_data=f"qual:{h}"))
+        
+    if len(filtered_keys) < len(groups.keys()):
+        buttons.append(InlineKeyboardButton("🔽 Show All Qualities", callback_data=f"showallqual:{pid}"))
         
     buttons.append(InlineKeyboardButton("⬅️ Back to Search", callback_data="ignore"))
     reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
@@ -1595,7 +1603,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = await update.message.reply_text("⏳ Fetching details...")
         async def do_edit(text, **kwargs):
             await msg.edit_text(text, **kwargs)
-        await show_pahe_details(do_edit, pid, context)
+        await show_pahe_details(do_edit, pid, context, update.effective_user.id)
         return
         
     msg = (
@@ -1604,6 +1612,25 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "I'll give you buttons to select the quality, choose a download link, and automatically bypass the ads!"
     )
     await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    pref_res = await database.get_user_setting(user_id, "pref_res", "Ask")
+    
+    options = ["2160p", "1080p", "720p", "480p", "Ask"]
+    buttons = []
+    for opt in options:
+        prefix = "✅ " if opt == pref_res else "❌ "
+        buttons.append(InlineKeyboardButton(f"{prefix}{opt}", callback_data=f"set_res:{opt}"))
+        
+    reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 2))
+    await update.message.reply_text(
+        "⚙️ **Bot Settings**\n\n"
+        "**Preferred Resolution**: Automatically filter out other resolutions when showing download options to save you clicks.\n\n"
+        f"Current: `{pref_res}`",
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
 
 
 async def do_smart_bypass(url: str) -> str:
@@ -2274,7 +2301,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             async def do_edit(text, **kwargs):
                 await query.edit_message_text(text, **kwargs)
             await do_edit("⏳ Fetching details...")
-            await show_pahe_details(do_edit, pid, context)
+            await show_pahe_details(do_edit, pid, context, query.from_user.id)
             return
 
         elif data.startswith("ep:"):
@@ -2301,11 +2328,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             context.user_data['groups'] = groups
             
+            user_id = query.from_user.id
+            pref_res = await database.get_user_setting(user_id, "pref_res", "Ask")
+            filtered_keys = [k for k in groups.keys() if pref_res == "Ask" or pref_res in k]
+            if not filtered_keys:
+                filtered_keys = list(groups.keys())
+                
             buttons = []
-            for k in groups.keys():
+            for k in filtered_keys:
                 h = hashlib.md5(k.encode()).hexdigest()[:8]
                 context.user_data[f"grp_{h}"] = k
                 buttons.append(InlineKeyboardButton(k, callback_data=f"qual:{h}"))
+                
+            if len(filtered_keys) < len(groups.keys()):
+                buttons.append(InlineKeyboardButton("🔽 Show All Qualities", callback_data=f"epshowall:{ep_idx}"))
                 
             buttons.append(InlineKeyboardButton("⬅️ Back to Episodes", callback_data=f"sel:{details['id']}"))
             reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
@@ -2338,9 +2374,58 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             buttons = []
             for h, k in [(k, v) for k, v in context.user_data.items() if k.startswith("grp_")]:
-                buttons.append(InlineKeyboardButton(k, callback_data=f"qual:{h.replace('grp_','')}"))
+                buttons.append(InlineKeyboardButton(v, callback_data=f"qual:{k.replace('grp_','')}"))
             reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
             await query.edit_message_text("Select Quality:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+        elif data.startswith("set_res:"):
+            res = data.split(":")[1]
+            user_id = query.from_user.id
+            await database.set_user_setting(user_id, "pref_res", res)
+            
+            options = ["2160p", "1080p", "720p", "480p", "Ask"]
+            buttons = []
+            for opt in options:
+                prefix = "✅ " if opt == res else "❌ "
+                buttons.append(InlineKeyboardButton(f"{prefix}{opt}", callback_data=f"set_res:{opt}"))
+            reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 2))
+            
+            await query.edit_message_text(
+                "⚙️ **Bot Settings**\n\n"
+                "**Preferred Resolution**: Automatically filter out other resolutions when showing download options to save you clicks.\n\n"
+                f"Current: `{res}`",
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        elif data.startswith("showallqual:"):
+            pid = int(data.split(":")[1])
+            groups = context.user_data.get('groups', {})
+            buttons = []
+            for k in groups.keys():
+                h = hashlib.md5(k.encode()).hexdigest()[:8]
+                context.user_data[f"grp_{h}"] = k
+                buttons.append(InlineKeyboardButton(k, callback_data=f"qual:{h}"))
+            buttons.append(InlineKeyboardButton("⬅️ Back to Search", callback_data="ignore"))
+            reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
+            await query.edit_message_text("💿 Select Quality:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            return
+            
+        elif data.startswith("epshowall:"):
+            ep_idx = int(data.split(":")[1])
+            groups = context.user_data.get('groups', {})
+            details = context.user_data.get('details')
+            ep_data = details["episodes"][ep_idx]
+            buttons = []
+            for k in groups.keys():
+                h = hashlib.md5(k.encode()).hexdigest()[:8]
+                context.user_data[f"grp_{h}"] = k
+                buttons.append(InlineKeyboardButton(k, callback_data=f"qual:{h}"))
+            buttons.append(InlineKeyboardButton("⬅️ Back to Episodes", callback_data=f"sel:{details['id']}"))
+            reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
+            await query.edit_message_text(f"📺 {details['title']} - {ep_data['ep']}\nSelect quality:", reply_markup=reply_markup)
+            return
             
         elif data.startswith("host:"):
             idx = int(data.split(":")[1])
@@ -2649,6 +2734,7 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("search", handle_text))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
