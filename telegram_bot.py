@@ -11,6 +11,7 @@ import traceback
 from typing import Dict, List
 
 import psa_core
+import database
 import httpx
 from playwright.async_api import async_playwright
 from telegram import Update
@@ -2150,11 +2151,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
                 
             link = links[idx]
+            original_url = link['url']
             
+            cached_url = await database.get_cached_link(original_url)
+            if cached_url:
+                buttons = [
+                    [InlineKeyboardButton(f"📥 Open in {link['name']}", url=cached_url)],
+                    [InlineKeyboardButton("♻️ Refresh Link", callback_data=f"refresh:pahe:{idx}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(buttons)
+                await query.edit_message_text(
+                    f"⚡ **Served from Cache** ⚡\n\n"
+                    f"🎬 Quality: {link['res']} {link['codec']}\n"
+                    f"💾 Size: {link['size']}\n"
+                    f"🔗 Host: {link['name']}\n\n"
+                    f"{cached_url}",
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=True,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+
             await query.edit_message_text(f"⏳ Bypassing link for **{link['name']}**... Please wait ~10s", parse_mode=ParseMode.MARKDOWN)
             
             try:
-                final_url = await do_smart_bypass(link['url'])
+                final_url = await do_smart_bypass(original_url)
+                
+                await database.put_cached_link(original_url, final_url)
                 
                 buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
                 reply_markup = InlineKeyboardMarkup(buttons)
@@ -2233,10 +2256,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
                 
             link = links[idx]
+            original_url = link['url']
+
+            cached_url = await database.get_cached_link(original_url)
+            if cached_url:
+                buttons = [
+                    [InlineKeyboardButton(f"📥 Open in {link['name']}", url=cached_url)],
+                    [InlineKeyboardButton("♻️ Refresh Link", callback_data=f"refresh:psa:{idx}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(buttons)
+                await query.edit_message_text(
+                    f"⚡ **Served from Cache** ⚡\n\n"
+                    f"🔗 Host: {link['name']}\n\n"
+                    f"{cached_url}",
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=True,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+
             await query.edit_message_text(f"⏳ Bypassing PSA link for **{link['name']}**... Please wait ~20s", parse_mode=ParseMode.MARKDOWN)
             
             try:
-                final_url = await do_psa_bypass(link['url'])
+                final_url = await do_psa_bypass(original_url)
                 
                 if not any(d in final_url for d in TERMINAL_DOMAINS):
                     btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve in Browser", url=final_url)]])
@@ -2251,6 +2293,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode=ParseMode.MARKDOWN
                     )
                 else:
+                    await database.put_cached_link(original_url, final_url)
                     buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
                     reply_markup = InlineKeyboardMarkup(buttons)
                     
@@ -2267,14 +2310,95 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 buttons = [[InlineKeyboardButton("🔗 Try Manual Link", url=link['url'])]]
                 reply_markup = InlineKeyboardMarkup(buttons)
                 await query.edit_message_text(f"❌ Bypass failed: {e}\nYou can try manually below.", reply_markup=reply_markup)
+        elif data.startswith("refresh:"):
+            _, site, idx_str = data.split(":")
+            idx = int(idx_str)
+            
+            if site == "pahe":
+                links = context.user_data.get('links', [])
+                if idx >= len(links):
+                    await query.edit_message_text("❌ Session expired.")
+                    return
+                link = links[idx]
+                original_url = link['url']
+                
+                await database.delete_cached_link(original_url)
+                
+                await query.edit_message_text(f"⏳ Refreshing bypass for **{link['name']}**... Please wait ~10s", parse_mode=ParseMode.MARKDOWN)
+                try:
+                    final_url = await do_smart_bypass(original_url)
+                    await database.put_cached_link(original_url, final_url)
+                    buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    await query.edit_message_text(
+                        f"✅ **Refreshed Successfully!**\n\n"
+                        f"🎬 Quality: {link['res']} {link['codec']}\n"
+                        f"💾 Size: {link['size']}\n"
+                        f"🔗 Host: {link['name']}\n\n"
+                        f"{final_url}",
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                except Exception as e:
+                    log.error(f"Bypass error: {traceback.format_exc()}")
+                    buttons = [[InlineKeyboardButton("🔗 Try Manual Link", url=original_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    await query.edit_message_text(f"❌ Refresh failed: {e}\nYou can try manually below.", reply_markup=reply_markup)
+            
+            elif site == "psa":
+                links = context.user_data.get('psa_links', [])
+                if idx >= len(links):
+                    await query.edit_message_text("❌ Session expired.")
+                    return
+                link = links[idx]
+                original_url = link['url']
+                
+                await database.delete_cached_link(original_url)
+                
+                await query.edit_message_text(f"⏳ Refreshing PSA bypass for **{link['name']}**... Please wait ~20s", parse_mode=ParseMode.MARKDOWN)
+                try:
+                    final_url = await do_psa_bypass(original_url)
+                    if not any(d in final_url for d in TERMINAL_DOMAINS):
+                        btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve in Browser", url=final_url)]])
+                        await query.edit_message_text(
+                            f"⚠️ **Action Required!**\n\n"
+                            f"This link is protected by Cloudflare or requires a timer.\n\n"
+                            f"1. Tap the button below to open your standard browser.\n"
+                            f"2. Solve any captchas and **wait for all timers/redirects** to finish.\n"
+                            f"3. Once you reach the **FINAL destination** (like get-to.link, mega.nz, pixeldrain), copy that URL and paste it here.\n\n"
+                            f"🔗 `{final_url}`",
+                            reply_markup=btn,
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                    else:
+                        await database.put_cached_link(original_url, final_url)
+                        buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
+                        reply_markup = InlineKeyboardMarkup(buttons)
+                        await query.edit_message_text(
+                            f"✅ **Refreshed Successfully!**\n\n"
+                            f"🔗 Host: {link['name']}\n\n"
+                            f"{final_url}",
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True,
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                except Exception as e:
+                    log.error(f"PSA Bypass error: {traceback.format_exc()}")
+                    buttons = [[InlineKeyboardButton("🔗 Try Manual Link", url=original_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    await query.edit_message_text(f"❌ Refresh failed: {e}\nYou can try manually below.", reply_markup=reply_markup)
             
     except Exception as e:
         log.error(f"Callback error: {traceback.format_exc()}")
         await query.edit_message_text("❌ An internal error occurred.")
 
 
+async def post_init(application):
+    await database.init_db()
+
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("search", handle_text))
