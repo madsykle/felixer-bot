@@ -67,8 +67,7 @@ nohup python telegram_bot.py > bot.log 2>&1 &
 ## 📂 Project Structure
 - `telegram_bot.py` - The core asynchronous Telegram bot loop and Playwright bypass orchestrator.
 - `psa_core.py` - Module for parsing and scraping search results and release qualities from `psa.wf`.
-- `bypass_ouo.py` - Specifically designed to circumvent `ouo.io/press` Cloudflare protections using FlareSolverr.
-- `userscripts/` - Essential Greasemonkey scripts used by Playwright to accelerate countdowns and bypass basic shorteners.
+- `universal_domains.py` - A massive, maintained list of shortener domains imported to dynamically route pages.
 
 ## 🤝 Contributing
 Feel free to open an issue or submit a Pull Request if you'd like to add support for new shorteners or fix bugs. 

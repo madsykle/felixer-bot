@@ -122,7 +122,7 @@ async def api_search(q: str) -> list[dict]:
 
 def _parse_dls(content: str) -> list[dict]:
     dls = []
-    boxes = re.findall(r'<div class="box download[^"]*">.*?</div>\s*</div></div>', content, re.DOTALL)
+    boxes = re.findall(r'<div class="box download[^"]*">.*?</div>\s*</div>', content, re.DOTALL)
     if not boxes:
         boxes = [p for p in re.split(r"\s*</div>\s*</div>", content)
                  if "box download" in p and "e3lan" not in p]
@@ -130,25 +130,39 @@ def _parse_dls(content: str) -> list[dict]:
     for box in boxes:
         if "e3lan" in box or "atOptions" in box:
             continue
-        for seg in box.split("<b>"):
-            if not seg.strip() or "</b>" not in seg:
+            
+        chunks = re.split(r"(?:&nbsp;\s*<br\s*/?>\s*)+", box)
+        
+        for chunk in chunks:
+            if "shortc-button" not in chunk:
+                if "<b>" in chunk:
+                    subchunks = chunk.split("<b>")
+                    for seg in subchunks:
+                        if not seg.strip() or "</b>" not in seg: continue
+                        chunks.append(seg.replace("</b>", ""))
                 continue
-            head, rest = seg.split("</b>", 1)
+                
+            head = chunk.split("<a href")[0]
             qt = re.sub(r"<[^>]+>", "", head).strip()
-            sm = re.search(r"^\s*\|?\s*(\d+\.?\d*\s*(?:GB|MB|KB))", rest, re.I)
+            
+            sm = re.search(r"(\d+\.?\d*\s*(?:GB|MB|KB))", qt, re.I)
             size = sm.group(1).strip() if sm else ""
+            
             rm = re.search(r"(\d+p)", qt, re.I)
             res = rm.group(1).upper() if rm else ""
+            
             codec = ""
             if "x265" in qt.lower(): codec = "HEVC"
             elif "x264" in qt.lower(): codec = "AVC"
             if "hdr" in qt.lower(): codec = (codec + " HDR").strip()
+            
             audio = ""
             for a in ["DD+7.1","DD+5.1","DD5.1","Atmos","TrueHD","DTS-HD","DTS","6CH"]:
                 if a.lower() in qt.lower():
                     audio = a; break
+                    
             for url, sc in re.findall(
-                r'<a href="([^"]+)" target="_blank" class="shortc-button small \w+\s*">([^<]+)</a>', rest
+                r'<a href="([^"]+)" target="_blank" class="shortc-button small \w+\s*">([^<]+)</a>', chunk
             ):
                 s = sc.strip().upper()
                 name, ico = SVC.get(s, (s, "🔗"))
@@ -214,10 +228,910 @@ GETLINK_DOMAINS = ["pahe.plus", "oii.la", "tpi.li", "old.pahe.plus"]
 LINEGEE_DOMAINS = ["linegee.net"]
 SPACETICA_DOMAINS = ["spacetica.com"]
 WORDCOUNTER_DOMAINS = ["wordcounter.icu"]
+UNIVERSAL_USERSCRIPT_DOMAINS = [
+    "-appz.eu",
+    "-mail.com",
+    "-paw.net",
+    "-soft.com",
+    "10beasts.biz",
+    "10short.com",
+    "14xpics.space",
+    "1bitspace.com",
+    "1fichier.com",
+    "1ink.cc",
+    "1link.club",
+    "1link.vip",
+    "1minx.com",
+    "1short.io",
+    "1shortlink.com",
+    "1v.to",
+    "2i.cz",
+    "2i.sk",
+    "2linkes.com",
+    "2the.space",
+    "2unlock.com",
+    "3minx.com",
+    "3xplanet.com",
+    "3xplanet.net",
+    "4ace.online",
+    "4fnet.org",
+    "4fuk.me",
+    "4hi.in",
+    "4link.com",
+    "555fap.com",
+    "7misr4day.com",
+    "8tm.net",
+    "a2zapk.io",
+    "a4a.site",
+    "ac.totsugeki.com",
+    "acorta2.com",
+    "acortaphd.live",
+    "acorte.xyz",
+    "adbtc.top",
+    "adbypass.org",
+    "adfoc.us",
+    "adoc.pub",
+    "adpayl.ink",
+    "adsafelink.com",
+    "adsense.tupaste",
+    "adshnk.com",
+    "adshrink.it",
+    "adtival.network",
+    "adurl.io",
+    "advisecreate.fun",
+    "adz7short.space",
+    "ai18.pics",
+    "aipebel.com",
+    "ak.sv",
+    "akash.classicoder",
+    "almontsf.com",
+    "alorra.com",
+    "altearnativasa.com",
+    "amanguides.com",
+    "anchoreth.com",
+    "anime-jav.com",
+    "animesgd.net",
+    "anmolbetiyojana.in",
+    "anonym.ninja",
+    "anonymfile.com",
+    "antonimos.de",
+    "api.gplinks.com",
+    "api.php",
+    "apkadmin.com",
+    "apkw.ru",
+    "aplicacionpara.org",
+    "app.khaddavi",
+    "app.link",
+    "app2.olamovies",
+    "apunkasoftware.net",
+    "article24.online",
+    "aryx.xyz",
+    "ashrfd.xyz",
+    "asideway.com",
+    "askerlikforum.com",
+    "askpaccosi.com",
+    "atglinks.com",
+    "atomicatlas.xyz",
+    "autodime.com",
+    "autofaucet.dutchycorp.space",
+    "ay.live",
+    "aylink.co",
+    "aysodamag.com",
+    "azmath.info",
+    "aztravels.net",
+    "bangclinic.life",
+    "bayimg.com",
+    "bcvc.ink",
+    "bebkub.com",
+    "beeimg.com",
+    "beinglink.in",
+    "besargaji.com",
+    "bestfonts.pro",
+    "bewbin.com",
+    "bgmiaimassist.in",
+    "bigbtc.win",
+    "biharkhabar.net",
+    "binbox.io",
+    "biovetro.net",
+    "birdurls.com",
+    "bit4me.info",
+    "bitcotasks.com",
+    "bitcotrade.net",
+    "bjp.org",
+    "blackwidof.org",
+    "blitly.io",
+    "blog.adscryp",
+    "blog.bloggerishyt",
+    "blog.disheye",
+    "blog.filepresident",
+    "blog.graphicuv",
+    "blog.klublog.com",
+    "blog.yurasu.xyz",
+    "bloggerishyt.in",
+    "bloggerpemula.pythonanywhere.com",
+    "blogging.techworldx",
+    "bloggingwow.store",
+    "blogmado.com",
+    "boiscd.com",
+    "bookszone.in",
+    "boost.ink",
+    "bowfile.com",
+    "btcon.online",
+    "buzzheavier.com",
+    "bypass.city",
+    "camdigest.com",
+    "camnangvay.com",
+    "cashgrowth.online",
+    "casimages.com",
+    "cekip.site",
+    "cgsonglyricz.in",
+    "chinese-pics.com",
+    "chinese-pics.vip",
+    "claimcrypto.cc",
+    "click.convertkit",
+    "clik.pw",
+    "clk.kim",
+    "clk.sh",
+    "cloudgallery.net",
+    "cn-av.com",
+    "cnpics.org",
+    "cnxx.me",
+    "cnxxx.org",
+    "co.in",
+    "coinclix.co",
+    "coincroco.com",
+    "coinhub.wiki",
+    "coinilium.net",
+    "coinscap.info",
+    "coinsrev.com",
+    "cointox.net",
+    "com.in",
+    "comohoy.com",
+    "comomedir.com",
+    "constanteonline.com",
+    "cookad.net",
+    "cosplay18.pics",
+    "cosplaytele.vip",
+    "count.vipurl",
+    "courselinkfree.us",
+    "cpmlink.net",
+    "cpmlink.pro",
+    "creditsgoal.com",
+    "crm.cekresi",
+    "croea.com",
+    "cryptings.in",
+    "cryptly.site",
+    "crypto-fi.net",
+    "cryptoinsights.site",
+    "cryptomonitor.in",
+    "cryptonews.faucetbin",
+    "cryptonewssite.rf.gd",
+    "cryptorex.net",
+    "cryptorotator.website",
+    "cshort.org",
+    "cubeupload.com",
+    "curto.win",
+    "cutelink.in",
+    "cutnet.net",
+    "cutpaid.com",
+    "cuturl.cc",
+    "dailyjobposting.xyz",
+    "dailyuploads.net",
+    "dataupload.net",
+    "dayuploads.com",
+    "dbree.me",
+    "dddrive.me",
+    "ddownload.com",
+    "dear-lottery.org",
+    "defencewallah.in",
+    "dekhe.click",
+    "delpez.com",
+    "deltabtc.xyz",
+    "depic.me",
+    "desiupload.co",
+    "devuploads.com",
+    "dhamakamusic.ink",
+    "dietadisociada.info",
+    "digiztechno.com",
+    "dinheiromoney.com",
+    "directupload.eu",
+    "disheye.com",
+    "dixva.com",
+    "djbassking.live",
+    "docadvice.eu",
+    "dogefury.com",
+    "doodrive.com",
+    "douploads.net",
+    "dow-dow-dow-dow-dow.xyz",
+    "down.fast",
+    "down.mdiaload",
+    "downfile.site",
+    "downloadani.me",
+    "downloader.tips",
+    "dpic.me",
+    "dramaday.me",
+    "drinkspartner.com",
+    "drop.download",
+    "dropgalaxy.com",
+    "droplink.co",
+    "dsmusic.in",
+    "dutchycorp.ovh",
+    "dutchycorp.space",
+    "dw-anime.net",
+    "dz4link.com",
+    "earnbee.xyz",
+    "earnbox.sattakingcharts",
+    "earningtime.in",
+    "earnmoneyyt.com",
+    "easy4skip.com",
+    "easylink.gamingwithtr.com",
+    "easyupload.io",
+    "eldiario24hrs.com",
+    "empebau.eu",
+    "encurtads.net",
+    "enlacito.com",
+    "epicload.com",
+    "eternalcbse.i",
+    "eu.org",
+    "evegor.net",
+    "ewall.biz",
+    "exactpay.online",
+    "exblog.jp",
+    "exe-links.com",
+    "exe-urls.com",
+    "exe.io",
+    "exego.app",
+    "exeo.app",
+    "exeygo.com",
+    "ez4mods.com",
+    "ez4short.com",
+    "f2h.io",
+    "falpus.com",
+    "fansonlinehub.com",
+    "fappic.com",
+    "fastpic.org",
+    "faucetsatoshi.site",
+    "fbol.top",
+    "fc-lc.com",
+    "fc-lc.xyz",
+    "fc.lc",
+    "fc2ppv.me",
+    "fc2ppv.stream",
+    "fikfok.net",
+    "file-upload.net",
+    "file-upload.org",
+    "filedm.com",
+    "filemoon.sx",
+    "fileresources.net",
+    "files.fm",
+    "filespayouts.com",
+    "financacerta.com",
+    "financedoze.com",
+    "financenova.online",
+    "financenuz.com",
+    "financeyogi.net",
+    "financialstudy.me",
+    "finish.wlink",
+    "fir3.net",
+    "firefaucet.win",
+    "fishingbreeze.com",
+    "fitdynamos.com",
+    "fiuxy2.co",
+    "flamebook.eu.org",
+    "flash.getpczone",
+    "flickr.com",
+    "flyad.vip",
+    "flycutlink.com",
+    "foodtechnos.in",
+    "forex-22.com",
+    "forex-trnd.com",
+    "fotosik.pl",
+    "frdl.is",
+    "freeat30.org",
+    "freemodsapp.in",
+    "freepreset.net",
+    "gadgetsweb.xyz",
+    "gadifeed.in",
+    "gally.shop",
+    "gamcabd.org",
+    "gamechilly.online",
+    "gamerking.shop",
+    "gamezigg.com",
+    "gdflix.dad",
+    "gdslink.xyz",
+    "get-click2.blogspot.com",
+    "get-to.link",
+    "get.cloudfam",
+    "get.instantearn",
+    "get.megaurl",
+    "get.rahim",
+    "getpdf.net",
+    "getunic.info",
+    "gitlink.pro",
+    "gkfun.xyz",
+    "go.bloggingaro",
+    "go.linkify",
+    "go.moonlinks",
+    "go.paylinks.cloud",
+    "go.php",
+    "go.tnshort",
+    "go.zovo",
+    "go2.pics",
+    "gocmod.com",
+    "gofile.download",
+    "gofile.io",
+    "gofile.to",
+    "gold-24.net",
+    "golink.bloggerishyt",
+    "gomob.xyz",
+    "goo.st",
+    "gplinks.co",
+    "greenmountmotors.com",
+    "gyanigurus.net",
+    "gyanitheme.com",
+    "hamody.pro",
+    "handydecor.com",
+    "haxi.online",
+    "hdpastes.com",
+    "headlinerpost.com",
+    "healthvainsure.site",
+    "hen-tay.net",
+    "hentai-manga.org",
+    "hentai-sub.com",
+    "hentai4f.com",
+    "hentaicovid.com",
+    "hentaicovid.org",
+    "hentaicovid.vip",
+    "hentaipig.com",
+    "hentaixnx.com",
+    "highkeyfinance.com",
+    "hitfile.net",
+    "hostpic.org",
+    "hubdrive.me",
+    "hypershort.com",
+    "ibb.co",
+    "iconicblogger.com",
+    "icutlink.com",
+    "idol69.net",
+    "ielts-isa.edu",
+    "ify.ac",
+    "iir.la",
+    "ikramlar.online",
+    "im.ge",
+    "imagebam.com",
+    "imageban.ru",
+    "imagehaha.com",
+    "imagehost.at",
+    "imagenetz.de",
+    "imagenpic.com",
+    "imagereviser.com",
+    "imageshack.com",
+    "imageshimage.com",
+    "imagetwist.com",
+    "imagetwist.netlify.app",
+    "imageup.ru",
+    "imagevenue.com",
+    "imagexport.com",
+    "imgadult.com",
+    "imgair.net",
+    "imgbase.ru",
+    "imgbb.com",
+    "imgblaze.net",
+    "imgbox.com",
+    "imgcloud.pw",
+    "imgdawgknuttz.com",
+    "imgdrive.net",
+    "imgfira.cc",
+    "imgflip.com",
+    "imgfrost.net",
+    "imghit.com",
+    "imgo.info",
+    "imgouhmde.sbs",
+    "imgouskel.sbs",
+    "imgpulse.top",
+    "imgpv.com",
+    "imgtaxi.com",
+    "imgtraffic.com",
+    "imgwallet.com",
+    "imgxxt.in",
+    "importantclass.com",
+    "imx.to",
+    "index.php",
+    "indianshortner.com",
+    "indishare.org",
+    "indobo.com",
+    "infidrive.net",
+    "infonerd.org",
+    "inicerita.online",
+    "inshortnote.com",
+    "instander.me",
+    "instanders.app",
+    "instaserve.net",
+    "insurancegold.in",
+    "ipamod.com",
+    "itijobalert.in",
+    "jameen.xyz",
+    "japanpaw.com",
+    "jav-load.com",
+    "javball.com",
+    "javbee.co",
+    "javlibrary.com",
+    "javring.com",
+    "javstore.net",
+    "javsunday.com",
+    "javtele.net",
+    "javtenshi.com",
+    "jioupload.com",
+    "jioupload.icu",
+    "jobinmeghalaya.in",
+    "jobzhub.store",
+    "jobzspk.xyz",
+    "jrlinks.in",
+    "k2s.cc",
+    "kaomojihub.com",
+    "karanpc.com",
+    "karyawan.co.id",
+    "katfile.com",
+    "katfile.vip",
+    "kbconlinegame.com",
+    "keedabankingnews.com",
+    "keeplinks.org",
+    "keptarolo.hu",
+    "kimochi.info",
+    "kin8-av.com",
+    "kin8-jav.com",
+    "kingofshrink.com",
+    "kingshortener.com",
+    "kisalt.com",
+    "kisalt.digital",
+    "knowiz0.blogspot.com",
+    "kr-av.com",
+    "krakenfiles.com",
+    "kut.li",
+    "kvkparbhani.org",
+    "labgame.io",
+    "lajangspot.web.id",
+    "land.povathemes",
+    "lanza.me",
+    "largestpanel.in",
+    "learnmany.in",
+    "librolandia.cc",
+    "librospdfgratismundo.net",
+    "lifgam.online",
+    "linegee.net",
+    "link.manudatos",
+    "link.paid",
+    "link.theflash",
+    "link.unlockner",
+    "link.whf",
+    "link4earn.com",
+    "link4earn.in",
+    "linkbox.to",
+    "linkforearn.com",
+    "linkjust.com",
+    "linkmo.net",
+    "linkpoi.me",
+    "links-loot.com",
+    "links.cuevana",
+    "links.kmhd",
+    "linkshortify.in",
+    "linkshrink.net",
+    "linksloot.net",
+    "linksly.co",
+    "linkspy.cc",
+    "linkvertise.com",
+    "linx.cc",
+    "litecoin.host",
+    "lkfms.pro",
+    "lksfy.com",
+    "lksfy.in",
+    "lnbz.la",
+    "lnk.news",
+    "lnk2.cc",
+    "lnks.primarchweb",
+    "loaninsurehub.com",
+    "loanoffer.cc",
+    "lolinez.com",
+    "lookmyimg.com",
+    "loot-link.com",
+    "loot-links.com",
+    "lootdest.org",
+    "lootlink.org",
+    "lootlinks.co",
+    "lopteapi.com",
+    "m.flyad.vip",
+    "main.php",
+    "maloma3arbi.blogspot.com",
+    "manga4nx.site",
+    "mangalist.org",
+    "manishclasses.in",
+    "mastramstories.com",
+    "mayas.travel",
+    "mazen-ve3.com",
+    "mbantul.my",
+    "mboost.me",
+    "mdsuuniversity.org",
+    "mediafire.com",
+    "mega4upload.net",
+    "megafly.in",
+    "megalink.pro",
+    "megalinks.info",
+    "megaup.net",
+    "megaupto.com",
+    "mendationforc.info",
+    "metasafelink.site",
+    "mexa.sh",
+    "mh.gourlpro",
+    "michaelemad.com",
+    "minhapostagem.top",
+    "minimilionario.com",
+    "mirrored.to",
+    "misterio.ro",
+    "mitly.us",
+    "mixrootmod.com",
+    "mkvmoviespoint.casa",
+    "mobiend.com",
+    "mobilenagari.com",
+    "modcombo.com",
+    "modijiurl.com",
+    "modmania.eu",
+    "modsbase.com",
+    "modsfire.com",
+    "mohtawaa.com",
+    "money.hustlershub",
+    "moneyblink.com",
+    "monoschinos.club",
+    "moonplusnews.com",
+    "motakhokhara.blogspot",
+    "mp4upload.com",
+    "mphealth.online",
+    "mrproblogger.com",
+    "mtmanagers.pro",
+    "multiup.io",
+    "mundopolo.net",
+    "musicc.xyz",
+    "myfirstdollar.net",
+    "myscheme.org",
+    "myshrinker.com",
+    "network-loop.com",
+    "neverdims.com",
+    "newassets.hcaptcha.com",
+    "newsminer.uno",
+    "newzwala.co",
+    "nidbd.me",
+    "nishankhatri.xyz",
+    "nmac.to",
+    "noelshack.com",
+    "noodlemagazine.com",
+    "noticia.php",
+    "nyushuemu.com",
+    "nzarticles.pro",
+    "o-pro.online",
+    "ocultandoo.blogspot",
+    "oei.la",
+    "offerboom.top",
+    "offerwall.me",
+    "ofilmetorrent.com",
+    "oii.io",
+    "oii.la",
+    "oii.si",
+    "oke.io",
+    "oko.sh",
+    "old-young.net",
+    "olhonagrana.com",
+    "onlinetechsolution.link",
+    "onlinetntextbooks.com",
+    "onlypc.net",
+    "ontechhindi.com",
+    "orangepix.is",
+    "otomi-games.com",
+    "ouo.io",
+    "ouo.press",
+    "ovabee.com",
+    "owllink.net",
+    "owoanime.com",
+    "oydir.com",
+    "pahe.plus",
+    "pahe.win",
+    "pallabmobile.in",
+    "pandagamepad.co",
+    "pandaznetwork.com",
+    "panyhealth.com",
+    "passivecryptos.xyz",
+    "paste.japan",
+    "pastebin.com",
+    "paster.gg",
+    "pastescript.com",
+    "pastesmkv.xyz",
+    "payalgaming.co",
+    "paycut.pro",
+    "payskip.org",
+    "pdfcoffee.com",
+    "pelistop.xyz",
+    "petly.lat",
+    "pic-upload.de",
+    "picforall.ru",
+    "picstate.com",
+    "pig69.com",
+    "pilot007.org",
+    "pimpandhost.com",
+    "pixhost.to",
+    "pixxxels.cc",
+    "platinsport.com",
+    "playnano.online",
+    "playonpc.online",
+    "playpaste.com",
+    "playpastelinks.com",
+    "porn-pig.com",
+    "porn4f.com",
+    "porn4f.org",
+    "posicionamientoweb.click",
+    "posterify.net",
+    "postimg.cc",
+    "privatenudes.com",
+    "prnt.sc",
+    "programasvirtualespc.net",
+    "psa.wf",
+    "psccapk.in",
+    "pubghighdamage.com",
+    "pwrpa.cc",
+    "pxanimeurdu.com",
+    "qiwi.gg",
+    "quesignifi.ca",
+    "quickeemail.com",
+    "rapidgator.net",
+    "raretoonsindia.rtilinks",
+    "ravellawfirm.com",
+    "rcccn.in",
+    "readytechflip.com",
+    "rekonise.com",
+    "relampagomovies.com",
+    "reminimod.co",
+    "render-state.to",
+    "revlink.pro",
+    "revly.click",
+    "rfaucet.com",
+    "rg.sattakingcharts",
+    "rintor.space",
+    "rlu.ru",
+    "rocklinks.in",
+    "rodimalam.com",
+    "rokni.xyz",
+    "rotizer.net",
+    "rtilinks.com",
+    "ryuugames.com",
+    "s-porn.com",
+    "safe.php",
+    "safez.es",
+    "sastainsurance.xyz",
+    "secure.bgmiupdate",
+    "secure.moderngyan",
+    "segurosdevida.site",
+    "send.now",
+    "seriezloaded.com",
+    "servicemassar.ma",
+    "set.seturl",
+    "setroom.biz",
+    "seulink.digital",
+    "seulink.online",
+    "sewdamp3.com",
+    "sexyforums.com",
+    "sfile.mobi",
+    "sfl.gl",
+    "share4u.men",
+    "sharefile.co",
+    "sharemods.com",
+    "sharetext.me",
+    "shareus.io",
+    "sharphindi.in",
+    "shentai-anime.com",
+    "sheralinks.com",
+    "shon.xyz",
+    "shopizo.fun",
+    "short-info.link",
+    "short-ly.co",
+    "short-url.link",
+    "short.am",
+    "short.croclix",
+    "shortex.in",
+    "shortfaster.net",
+    "shortie.sbs",
+    "shortit.pw",
+    "shortlinks2btc.somee.com",
+    "shortmoz.link",
+    "shortxlinks.com",
+    "shotcan.com",
+    "shrink-service.it",
+    "shrinke.me",
+    "shrinkforearn.in",
+    "shrinkme.click",
+    "shrs.link",
+    "shrtbr.com",
+    "shrtslug.biz",
+    "sht-link.com",
+    "similarsites.com",
+    "sinsitio.site",
+    "skillheadlines.in",
+    "skyfreecoins.top",
+    "skyve.io",
+    "slink.bid",
+    "smallshorts.com",
+    "social-unlock.com",
+    "socialwolvez.com",
+    "solidcoins.net",
+    "sololevelingmanga.pics",
+    "spacetica.com",
+    "spaste.com",
+    "speedynews.xyz",
+    "sphinxanime.com",
+    "sproutworkers.co",
+    "srt.am",
+    "ss7.info",
+    "starkroboticsfrc.com",
+    "starsddl.me",
+    "stfly.me",
+    "stfly.xyz",
+    "stly.link",
+    "stockinsights.in",
+    "stockmarg.com",
+    "sub2get.com",
+    "subtituladas.com",
+    "subtituladas.org",
+    "sunci.net",
+    "supercheats.com",
+    "surflink.tech",
+    "surl.gd",
+    "surl.li",
+    "sweetie-fox.com",
+    "swzz.xyz",
+    "taiyxd.net",
+    "takefile.link",
+    "tawda.xyz",
+    "tech.hipsonyc",
+    "tech5s.co",
+    "techarmor.xyz",
+    "techfizia.com",
+    "techhype.in",
+    "techkhulasha.com",
+    "techmize.net",
+    "technons.com",
+    "techrayzer.com",
+    "techreviewhub.store",
+    "techsl.online",
+    "techtnet.com",
+    "techxploitz.eu.org",
+    "techy.veganab",
+    "techyblogs.in",
+    "teknoasian.com",
+    "tempatwisata.pro",
+    "test.shrinkurl",
+    "tfly.link",
+    "thanks.tinygo",
+    "the2.link",
+    "theapknews.shop",
+    "thecryptoworld.site",
+    "thefileslocker.net",
+    "thegadgetking.in",
+    "theglobaldiary.com",
+    "thelatintwistcafe.com",
+    "themezon.net",
+    "thepragatishilclasses.com",
+    "thinfi.com",
+    "thotpacks.xyz",
+    "thunder-appz.eu",
+    "tii.la",
+    "tiktokcounter.net",
+    "tiktokrealtime.com",
+    "tmearn.net",
+    "toilaquantri.com",
+    "toonhub4u.net",
+    "topshare.in",
+    "tournguide.com",
+    "tpayr.xyz",
+    "tpi.li",
+    "trafficimage.club",
+    "trangchu.news",
+    "travelinian.com",
+    "trendzguruji.me",
+    "trendzilla.club",
+    "tribuntekno.com",
+    "triggeredplay.com",
+    "trimorspacks.com",
+    "try2link.com",
+    "tucinehd.com",
+    "tuconstanteonline.com",
+    "tulink.org",
+    "tumangasdd.com",
+    "turbobit.net",
+    "turboimagehost.com",
+    "turkdown.com",
+    "tutwuri.id",
+    "tvi.la",
+    "udrop.com",
+    "uiil.ink",
+    "unblockedgames.world",
+    "uncenav.com",
+    "up-4ever.net",
+    "up-load.io",
+    "updrop.link",
+    "upfiles.app",
+    "upfion.com",
+    "upload.ee",
+    "uploadev.org",
+    "uploadhaven.com",
+    "uploadrar.com",
+    "uploady.io",
+    "uprwssp.org",
+    "upshrink.com",
+    "uptomega.me",
+    "uqozy.com",
+    "urlcash.com",
+    "urlgalleries.net",
+    "urls.cx",
+    "urlx.one",
+    "usandoapp.com",
+    "usersdrive.com",
+    "vbnmx.online",
+    "veganab.co",
+    "verpeliculasonline.org",
+    "vi-music.app",
+    "videolyrics.in",
+    "vidhidepro.com",
+    "vipr.im",
+    "viralmp3.com",
+    "vosan.co",
+    "vplink.in",
+    "w.linkspoint",
+    "waezf.xyz",
+    "wastenews.xyz",
+    "web.admoneyclick",
+    "web1s.asia",
+    "web1s.com",
+    "whatgame.xyz",
+    "wii.si",
+    "woowebtools.com",
+    "wordcount.im",
+    "wordcounter.icu",
+    "work.ink",
+    "workupload.com",
+    "worldwallpaper.top",
+    "wp.thunder",
+    "wp2host.com",
+    "writedroid.eu",
+    "writedroid.in",
+    "writeprofit.org",
+    "www.akcartoons",
+    "www.go",
+    "www.gtaall",
+    "www.itscybertech",
+    "www.lanoticia",
+    "www.mirrored",
+    "www.ovagames",
+    "www.saferoms",
+    "www.spaste",
+    "www.techhubcap",
+    "www.udlinks",
+    "www.yitarx",
+    "xcamcovid.com",
+    "xonnews.net",
+    "xpshort.com",
+    "xtrabits.click",
+    "xxpics.org",
+    "xxxwebdlxxx.org",
+    "xxxwebdlxxx.top",
+    "yitarx.com",
+    "yoshare.net",
+    "yrtourguide.com",
+    "zaku.pro",
+    "zegtrends.com",
+    "zippynest.online",
+    "zshort.io",
+]
+
 
 ALL_SHORTLINK_DOMAINS = (
     TEKNOASIAN_DOMAINS + BLOGMYSTT_DOMAINS + GETLINK_DOMAINS +
-    LINEGEE_DOMAINS + SPACETICA_DOMAINS + WORDCOUNTER_DOMAINS
+    LINEGEE_DOMAINS + SPACETICA_DOMAINS + WORDCOUNTER_DOMAINS + UNIVERSAL_USERSCRIPT_DOMAINS
 )
 
 # JS to speed up all timers by 100x (same as the userscript)
@@ -306,7 +1220,7 @@ async def _bypass_blogmystt(page) -> str | None:
     for step in range(10):
         log.info("  ↳ blogmystt step %d: %s", step, page.url)
         try:
-            sel = "#startButton, a#startButton, #getnewlink, button#getnewlink, #lite-start-sora-a, #generater, .humanVerify .verify, #lite-human-verif-button, .Skipper .skipcontent, .skipcontent, #showlink, #lite-end-sora-button, .postnext"
+            sel = "#startButton, a#startButton, #getnewlink, button#getnewlink, #lite-start-sora-a, #generater, .humanVerify .verify, #lite-human-verif-button, .Skipper .skipcontent, .skipcontent, #showlink, #lite-end-sora-button, .postnext, a.skip-ad, a.skip-btn, button.skip-btn, #continue, #btn-main, #btn6"
             await page.wait_for_selector(sel, timeout=8000)
             
             action = await page.evaluate(f"""
@@ -316,6 +1230,7 @@ async def _bypass_blogmystt(page) -> str | None:
                     if (document.querySelector('.Skipper .skipcontent, .skipcontent')) return 'skipcontent';
                     if (document.querySelector('.humanVerify .verify, #lite-human-verif-button')) return 'verify';
                     if (document.querySelector('#getnewlink, button#getnewlink')) return 'getnewlink';
+                    if (document.querySelector('a.skip-ad, a.skip-btn, button.skip-btn')) return 'skip';
                     const el = document.querySelector('{sel}');
                     return el ? 'other' : null;
                 }})()
@@ -345,9 +1260,10 @@ async def _bypass_blogmystt(page) -> str | None:
             
             # Wait for navigation
             try:
-                await page.wait_for_load_state("networkidle", timeout=10000)
+                await page.wait_for_load_state("domcontentloaded", timeout=4000)
+                await asyncio.sleep(0.5)
             except Exception:
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)
                 
         except Exception:
             break
@@ -371,10 +1287,13 @@ async def _bypass_getlink(page) -> str | None:
 
     # Check for #invisibleCaptchaShortlink (used by pahe.plus)
     try:
-        captcha_btn = await page.wait_for_selector("#invisibleCaptchaShortlink", timeout=5000, state="attached")
+        # Wait for it to become enabled (userscript logic)
+        captcha_btn = await page.wait_for_selector("#invisibleCaptchaShortlink:not([disabled]):not(.disabled)", timeout=10000)
         if captcha_btn:
-            log.info("  ⚠️ pahe.plus requires manual hCaptcha solve. Aborting wait.")
-            return None
+            # Force click just in case
+            await captcha_btn.click(force=True)
+            log.info("  ✓ clicked #invisibleCaptchaShortlink")
+            await asyncio.sleep(3)
     except Exception:
         pass
 
@@ -499,6 +1418,14 @@ async def do_bypass(url: str) -> str:
                 ctx = await br.new_context(user_agent=UA)
                 page = await ctx.new_page()
 
+                # Block images, fonts, css to speed up loading significantly
+                async def intercept_route(route):
+                    if route.request.resource_type in ["image", "stylesheet", "font", "media", "other"]:
+                        await route.abort()
+                    else:
+                        await route.continue_()
+                await ctx.route("**/*", intercept_route)
+
                 # Inject timer speedup BEFORE navigation (like the userscript)
                 # The JS itself checks the hostname to avoid breaking specific sites
                 await page.add_init_script(SPEEDUP_JS)
@@ -514,7 +1441,7 @@ async def do_bypass(url: str) -> str:
                     log.info("  ↳ hop %d: %s", hop, cur)
                     direct_result = None
                     if _match_domain(cur, TEKNOASIAN_DOMAINS):
-                        direct_result = await _bypass_teknoasian(page)
+                        direct_result = await _bypass_blogmystt(page)
                     elif _match_domain(cur, BLOGMYSTT_DOMAINS):
                         direct_result = await _bypass_blogmystt(page)
                     elif _match_domain(cur, GETLINK_DOMAINS):
@@ -527,7 +1454,7 @@ async def do_bypass(url: str) -> str:
                         direct_result = await _bypass_spacetica(page)
                     else:
                         log.info("  ↳ unknown domain, trying generic flow")
-                        direct_result = await _bypass_teknoasian(page)
+                        direct_result = await _bypass_blogmystt(page)
 
                     if direct_result:
                         if not _match_domain(direct_result, ALL_SHORTLINK_DOMAINS):
@@ -592,21 +1519,67 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def do_smart_bypass(url: str) -> str:
+    """Ultimate bypass flow: loops between native and Playwright bypasses until terminal."""
+    current_url = url
+    visited = set([current_url])
+    
+    for _ in range(5):  # Max 5 major hops
+        log.info("Smart Bypass loop processing: %s", current_url)
+        # Try native bypass first
+        next_url = await do_psa_bypass(current_url)
+        
+        if any(d in next_url for d in TERMINAL_DOMAINS):
+            return next_url
+            
+        # If native didn't finish it, and it's still a shortlink
+        if _match_domain(next_url, ALL_SHORTLINK_DOMAINS):
+            log.info("Native bypass incomplete, trying Playwright for: %s", next_url)
+            next_url = await do_bypass(next_url)
+            
+            if any(d in next_url for d in TERMINAL_DOMAINS):
+                return next_url
+                
+        # If we didn't make any progress, break out
+        if next_url in visited or next_url == current_url:
+            log.info("Bypass loop stuck at: %s", next_url)
+            return next_url
+            
+        current_url = next_url
+        visited.add(current_url)
+        
+    return current_url
+
+async def handle_text(
+update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip()
     if query.startswith('/'): return
     
     if query.startswith("http://") or query.startswith("https://"):
         await update.message.reply_text(f"🔗 Detected a link. Attempting bypass...", parse_mode=ParseMode.MARKDOWN)
         try:
-            # We use do_psa_bypass because it has FlareSolverr and Playwright + userscripts
-            # It will bypass shortlinks like psa.pm and sh.psa.wf easily!
-            final_link = await do_psa_bypass(query)
-            if final_link == query:
-                btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Open Link", url=final_link)]])
-                await update.message.reply_text(f"⚠️ Could not bypass the link further:\n`{final_link}`", parse_mode=ParseMode.MARKDOWN, reply_markup=btn)
+            await update.message.reply_text(f"🚀 Processing link...", parse_mode=ParseMode.MARKDOWN)
+            final_link = await do_smart_bypass(query)
+                    
+            if not any(d in final_link for d in TERMINAL_DOMAINS):
+                btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Solve in Browser", url=final_link)]])
+                await update.message.reply_text(
+                    f"⚠️ **Action Required!**\n\n"
+                    f"This link is protected by Cloudflare or requires a timer.\n\n"
+                    f"1. Tap the button below to open your standard browser.\n"
+                    f"2. Solve any captchas and **wait for all timers/redirects** to finish.\n"
+                    f"3. Once you reach the **FINAL destination** (like get-to.link, mega.nz, pixeldrain), copy that URL and paste it here.\n\n"
+                    f"🔗 `{final_link}`",
+                    parse_mode=ParseMode.MARKDOWN, reply_markup=btn
+                )
             else:
-                await update.message.reply_text(f"✅ Bypassed Link:\n`{final_link}`", parse_mode=ParseMode.MARKDOWN)
+                btn = InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Open Link", url=final_link)]])
+                await update.message.reply_text(
+                    f"✅ Bypassed Link:\n\n{final_link}",
+                    reply_markup=btn,
+                    disable_web_page_preview=True
+                )
         except Exception as e:
             await update.message.reply_text(f"❌ Failed to bypass: {e}")
         return
@@ -641,126 +1614,383 @@ async def perform_pahe_search(update: Update, context: ContextTypes.DEFAULT_TYPE
         log.error(f"Search error: {traceback.format_exc()}")
         await query_obj.edit_message_text(f"❌ Error searching Pahe: {e}")
 
+import base64
+import html
+import re
+import urllib.parse
+from urllib.parse import urlparse, unquote
+
+
+async def _bypass_base64_leak(url: str) -> str:
+    """Extract base64 links leaked in the HTML of certain shorteners."""
+    if not any(d in url for d in ["tpi.li", "oii.la", "tii.la", "oei.la", "iir.la", "tvi.la", "lnbz.la"]):
+        return url
+        
+    try:
+        import requests as sync_requests
+        import base64
+        import re
+        FLARESOLVERR_URL = "http://localhost:8191/v1"
+        payload = {"cmd": "request.get", "url": url, "maxTimeout": 60000}
+        res = await asyncio.to_thread(
+            sync_requests.post, FLARESOLVERR_URL, json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("status") == "ok":
+                html_content = data.get("solution", {}).get("response", "")
+                matches = re.findall(r"aHR0cHM6[^\'\"\\\s]+", html_content)
+                if matches:
+                    b64_id = matches[0]
+                    b64_id += "=" * ((4 - len(b64_id) % 4) % 4)
+                    decoded = base64.b64decode(b64_id).decode('utf-8')
+                    if decoded and (decoded.startswith("http://") or decoded.startswith("https://")):
+                        log.info("  ✓ Base64 leak bypass → %s", decoded[:80])
+                        return decoded
+    except Exception as e:
+        log.error("Base64 leak bypass error: %s", e)
+    return url
+
+async def _decode_go2pics(url: str) -> str:
+
+    """Decode go2.pics base64-encoded URLs."""
+    if "go2.pics/go2?id=" not in url:
+        return url
+    try:
+        b64_id = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("id", [""])[0]
+        if b64_id:
+            b64_id += "=" * ((4 - len(b64_id) % 4) % 4)
+            decoded = base64.b64decode(b64_id).decode('utf-8')
+            log.info("go2.pics decoded → %s", decoded)
+            return decoded
+    except Exception as e:
+        log.error("go2.pics decode error: %s", e)
+    return url
+
+
+async def _bypass_redirect_page(url: str) -> str:
+    """Bypass redirect pages (starkroboticsfrc.com, cashgrowth.online, etc)
+    by using their session PATCH API to get the real destination URL."""
+    import requests as sync_requests
+    parsed = urllib.parse.urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    ssid = urllib.parse.parse_qs(parsed.query).get("ssid", [""])[0]
+    if not ssid:
+        return url
+
+    log.info("Redirect page bypass: ssid=%s on %s", ssid, parsed.netloc)
+
+    def _do_patch():
+        s = sync_requests.Session()
+        s.headers.update({"User-Agent": UA})
+        # Load page for CSRF token
+        r = s.get(url, timeout=20)
+        csrf_match = re.search(r'csrf[_-]?token["\s:=]+["\']([^"\']+)', r.text, re.I)
+        csrf = csrf_match.group(1) if csrf_match else ""
+        # PATCH to complete session and get redirect URL
+        ip_data = {"currentIp": "1.2.3.4", "ipType": "IPv4",
+                    "ipv4": "1.2.3.4", "ipv6": None, "hcaptchaToken": None}
+        r2 = s.patch(
+            f"{base}/api/session/{ssid}", json=ip_data,
+            headers={"Content-Type": "application/json",
+                      "X-CSRF-Token": csrf,
+                      "Origin": base, "Referer": url},
+            timeout=20,
+        )
+        if r2.status_code == 200:
+            data = r2.json()
+            if data.get("success") and data.get("redirect"):
+                return data["redirect"]
+        return None
+
+    redirect = await asyncio.to_thread(_do_patch)
+    if redirect:
+        log.info("Redirect page API → %s", redirect)
+        def _follow(u=redirect):
+            import requests as rq
+            import re
+            import html
+            import urllib.parse
+            max_redirects = 5
+            curr_url = u
+            for _ in range(max_redirects):
+                r = rq.get(curr_url, headers={"User-Agent": UA}, allow_redirects=True, timeout=20)
+                # Check for meta refresh
+                meta_match = re.search(r'(?i)<meta\s+http-equiv=["\']refresh["\']\s+content=["\']\d+;\s*url=([^"\']+)["\']', r.text)
+                if meta_match:
+                    next_url = html.unescape(meta_match.group(1)).strip()
+                    next_url = urllib.parse.urljoin(r.url, next_url)
+                    if next_url != curr_url:
+                        curr_url = next_url
+                        continue
+                # Check for location.replace
+                replace_match = re.search(r'location\.replace\(["\']([^"\']+)["\']\)', r.text)
+                if replace_match:
+                    next_url = replace_match.group(1).replace(r'\/', '/').replace(r'\\/', '/').strip()
+                    next_url = urllib.parse.urljoin(r.url, next_url)
+                    if next_url != curr_url:
+                        curr_url = next_url
+                        continue
+                return r.url
+            return curr_url
+        final = await asyncio.to_thread(_follow)
+        log.info("Followed redirect → %s", final)
+        return final
+    return url
+
+
+async def _follow_astro_island(url: str, max_hops: int = 10) -> str:
+    """Follow astro-island chains (ravellawfirm, cashgrowth, etc)
+    to extract finalDestination or predictableArticle links."""
+    import requests as sync_requests
+    for hop in range(max_hops):
+        log.info("Astro-island hop %d: %s", hop, url[:80])
+
+        def _fetch(u=url):
+            return sync_requests.get(u, headers={"User-Agent": UA}, timeout=20)
+
+        r = await asyncio.to_thread(_fetch)
+        text = html.unescape(r.text)
+
+        # Check for finalDestination
+        m_final = re.search(r'"finalDestination":\[\d+,"([^"]+)"\]', text)
+        if m_final:
+            dest = m_final.group(1)
+            log.info("Astro-island finalDestination → %s", dest[:80])
+            return await _decode_go2pics(dest)
+
+        # Check for predictableArticle (intermediate hop)
+        m_next = re.search(
+            r'"predictableArticle":\[\d+,\{"id":\[\d+,"[^"]+"\],"url":\[\d+,"([^"]+)"\]', text)
+        if m_next:
+            parsed = urllib.parse.urlparse(url)
+            url = f"{parsed.scheme}://{parsed.netloc}{m_next.group(1)}"
+            continue
+
+        break  # No more patterns found
+    return url
+
+
+# Known redirect page domains (sites that use the session PATCH API)
+REDIRECT_PAGE_DOMAINS = [
+    "starkroboticsfrc.com", "cashgrowth.online",
+]
+
+# Known astro-island domains
+ASTRO_ISLAND_DOMAINS = [
+    "ravellawfirm.com", "cashgrowth.online",
+]
+
+# Known ShrinkMe domains
+SHRINKME_DOMAINS = [
+    "shrinkme.click", "shrinkme.io", "shrinkme.us", "shrinkme.site",
+    "shrinkme.cc", "shrinkme.vip", "shrinkme.dev", "shrinkme.ink",
+]
+
+# Terminal destinations — stop bypassing when we reach these
+TERMINAL_DOMAINS = [
+    "mega.nz", "drive.google.com", "pixeldrain.com", "get-to.link",
+    "gofile.io", "1drv.ms", "1fichier.com", "buzzheavier.com",
+    "mediafire.com", "qiwi.gg",
+]
+
+
+async def _bypass_shrinkme(url: str) -> str:
+    """Bypass shrinkme.click / shrinkme.io links natively in Python."""
+    import requests as sync_requests
+    import bs4
+    import urllib.parse
+    import re
+    import html
+
+    # Parse alias
+    parsed = urllib.parse.urlparse(url)
+    alias = parsed.path.strip("/")
+    if not alias:
+        return url
+
+    log.info("Bypassing ShrinkMe: alias=%s", alias)
+
+    def _do_bypass():
+        s = sync_requests.Session()
+        s.headers.update({"User-Agent": UA})
+
+        # 1. GET themezon link.php
+        themezon_link = f"https://themezon.net/link.php?link={alias}"
+        r1 = s.get(themezon_link, headers={"Referer": url}, timeout=20)
+        
+        # Extract random post redirect
+        m = re.search(r'url=(https://themezon\.net/[^&\"\']+)', r1.text)
+        if not m:
+            log.error("Could not find themezon random post redirect")
+            return url
+        redirect_url = m.group(1)
+
+        log.info("Themezon intermediate post → %s", redirect_url[:80])
+
+        # 2. GET the random post
+        r2 = s.get(redirect_url, headers={"Referer": themezon_link}, timeout=20)
+
+        # 3. POST to redirect_to=random
+        r3 = s.post(
+            "https://themezon.net/?redirect_to=random",
+            data={"newwpsafelink": alias},
+            headers={"Referer": redirect_url},
+            allow_redirects=True,
+            timeout=20
+        )
+
+        # 4. Parse final page for nextPage link (mrproblogger)
+        soup = bs4.BeautifulSoup(r3.text, "html.parser")
+        next_page_div = soup.find(id="nextPage")
+        if not next_page_div:
+            log.error("Could not find nextPage div on themezon final page")
+            return url
+        
+        next_link_a = next_page_div.find("a")
+        if not next_link_a:
+            log.error("Could not find a tag in nextPage div")
+            return url
+        
+        mrproblogger_url = next_link_a.get("href")
+        log.info("MrProBlogger URL → %s", mrproblogger_url[:80])
+
+        # 5. GET mrproblogger URL
+        r4 = s.get(mrproblogger_url, headers={"Referer": r3.url}, timeout=20)
+
+        # 6. Parse form fields
+        soup2 = bs4.BeautifulSoup(r4.text, "html.parser")
+        form = soup2.find("form", id="go-link")
+        if not form:
+            log.error("Could not find form#go-link on mrproblogger")
+            return url
+        
+        action = form.get("action", "/links/go")
+        action_url = urllib.parse.urljoin(mrproblogger_url, action)
+
+        data = {}
+        for inp in form.find_all("input"):
+            name = inp.get("name")
+            if name:
+                data[name] = urllib.parse.unquote(inp.get("value", ""))
+
+        # 7. Sleep for 15 seconds countdown (required by server check)
+        log.info("Waiting 15 seconds for mrproblogger countdown...")
+        time.sleep(15)
+
+        # 8. POST to mrproblogger links/go
+        log.info("Sending mrproblogger AJAX POST...")
+        r5 = s.post(
+            action_url,
+            data=data,
+            headers={
+                "Referer": mrproblogger_url,
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            timeout=20
+        )
+
+        try:
+            res_json = r5.json()
+            if res_json.get("status") == "success" and res_json.get("url"):
+                return res_json["url"]
+            else:
+                log.error("MrProBlogger error response: %s", r5.text[:200])
+        except Exception as e:
+            log.error("MrProBlogger non-JSON or decode error: %s", e)
+
+        return url
+
+    result = await asyncio.to_thread(_do_bypass)
+    return result
+
+
 async def do_psa_bypass(url: str) -> str:
-    """Bypass PSA shortlinks using FlareSolverr + provided userscripts."""
+    """Bypass PSA shortlinks using native Python (no browser needed)."""
     c = _bcache.get(url)
     if c is not None:
         return c
 
+    original_url = url
     log.info("PSA Bypassing: %s", url)
-    final_url = url
-    try:
-        # Step 1: Use FlareSolverr to resolve the goto link
-        import requests
-        FLARESOLVERR_URL = "http://localhost:8191/v1"
-        payload = {"cmd": "request.get", "url": url, "maxTimeout": 60000}
-        
-        res = await asyncio.to_thread(requests.post, FLARESOLVERR_URL, json=payload, headers={"Content-Type": "application/json"})
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("status") == "ok":
-                flare_url = data["solution"]["url"]
-                if "goto" not in flare_url:
-                    final_url = flare_url
-                    log.info("FlareSolverr resolved goto link: %s", final_url)
-    except Exception as e:
-        log.error("FlareSolverr error: %s", e)
 
-    # Step 2: Use Playwright + userscripts to bypass the shortlink
-    try:
-        import os
-        async with PLAYWRIGHT_SEM:
-            async with async_playwright() as pw:
-                br = await pw.chromium.launch(headless=True)
-                ctx = await br.new_context(user_agent=UA)
-                page = await ctx.new_page()
+    # We run in a loop to handle multi-step bypasses
+    for step in range(5):
+        # Decode go2.pics if present
+        url = await _decode_go2pics(url)
+        if any(d in url for d in TERMINAL_DOMAINS):
+            break
 
-                # Load bypass userscripts
-                script_path = "userscripts/Bypass All Shortlinks Debloated.user.js"
-                if os.path.exists(script_path):
-                    with open(script_path, "r", encoding="utf-8") as f:
-                        script_text = f.read()
-                        polyfill = """
-                        window.GM_getValue = function() { return null; };
-                        window.GM_setValue = function() {};
-                        window.GM_xmlhttpRequest = function() {};
-                        window.GM_registerMenuCommand = function() {};
-                        window.GM_addStyle = function() {};
-                        var GM_info = {};
-                        """
-                        monkey_config_script = ""
-                        monkey_config_path = "userscripts/MonkeyConfig.js"
-                        if os.path.exists(monkey_config_path):
-                            with open(monkey_config_path, "r", encoding="utf-8") as fm:
-                                monkey_config_script = fm.read()
-                    
-                        await page.add_init_script(polyfill + "\n" + monkey_config_script + "\n" + script_text)
-                        log.info("Loaded Bypass All Shortlinks script in Playwright context")
-                    
-                script_path2 = "userscripts/AdsBypasser.user.js"
-                if os.path.exists(script_path2):
-                    with open(script_path2, "r", encoding="utf-8") as f:
-                        script_text = f.read()
-                        await page.add_init_script(polyfill + script_text)
-                        log.info("Loaded AdsBypasser script in Playwright context")
+        # Check if ShrinkMe
+        if any(d in url for d in SHRINKME_DOMAINS):
+            try:
+                url = await _bypass_shrinkme(url)
+                continue
+            except Exception as e:
+                log.error("ShrinkMe bypass error: %s", e)
+                break
 
-                try:
-                    await page.goto(final_url, wait_until="load", timeout=30000)
-                except Exception:
-                    pass
 
-                original_domain = final_url.split("/")[2] if len(final_url.split("/")) > 2 else ""
-                last_url = final_url
-                unchanged_count = 0
+        # Check if tpi.li / oii.la base64 leak
+        leaked = await _bypass_base64_leak(url)
+        if leaked != url:
+            url = leaked
+            continue
 
-                for _ in range(40):
-                    current = page.url
-                    if current != last_url:
-                        last_url = current
-                        unchanged_count = 0
-                    else:
-                        unchanged_count += 1
+        # Check if redirect page (starkroboticsfrc etc)
 
-                    if any(x in current for x in ["mega.nz", "pixeldrain.com", "gofile.io", "drive.google", "qiwi", "1drv.ms", "1fichier", "buzzheavier", "mediafire.com"]):
-                        await br.close()
-                        _bcache.put(url, current)
-                        return current
-                
-                    if "ouo.io" in current or "ouo.press" in current:
-                        log.info(f"Intercepted ouo link: {current}")
-                        await br.close()
-                    
-                        import bypass_ouo
-                        final_ouo = await asyncio.to_thread(bypass_ouo.bypass_ouo, current)
-                        if final_ouo:
-                            # Sometimes ouo returns go2.pics with base64 id
-                            if "go2.pics/go2?id=" in final_ouo:
-                                import base64
-                                import urllib.parse
-                                b64_id = urllib.parse.parse_qs(urllib.parse.urlparse(final_ouo).query).get('id', [''])[0]
-                                if b64_id:
-                                    try:
-                                        final_ouo = base64.b64decode(b64_id).decode('utf-8')
-                                    except Exception:
-                                        pass
-                            _bcache.put(url, final_ouo)
-                            return final_ouo
-                        return current
-                    
-                    current_domain = current.split("/")[2] if len(current.split("/")) > 2 else ""
-                    if unchanged_count >= 10 and current_domain != original_domain and "psa.wf" not in current and "psa.pm" not in current and "about:blank" not in current:
-                        await br.close()
-                        _bcache.put(url, current)
-                        return current
-                
-                    await asyncio.sleep(0.5)
+        if any(d in url for d in REDIRECT_PAGE_DOMAINS) and "ssid=" in url:
+            try:
+                url = await _bypass_redirect_page(url)
+                continue
+            except Exception as e:
+                log.error("Redirect page bypass error: %s", e)
+                break
 
-                current = page.url
-                await br.close()
-                return current
-    except Exception as e:
-        log.error("PSA bypass error: %s", e)
-        return final_url
+        # Check if astro-island chain
+        if any(d in url for d in ASTRO_ISLAND_DOMAINS):
+            try:
+                url = await _follow_astro_island(url)
+                continue
+            except Exception as e:
+                log.error("Astro-island bypass error: %s", e)
+                break
+
+        # If it's a psa.wf goto link, we resolve it via FlareSolverr
+        if "psa.wf" in url and "goto" in url:
+            try:
+                import requests as sync_requests
+                FLARESOLVERR_URL = "http://localhost:8191/v1"
+                payload = {"cmd": "request.get", "url": url, "maxTimeout": 60000}
+                res = await asyncio.to_thread(
+                    sync_requests.post, FLARESOLVERR_URL, json=payload,
+                    headers={"Content-Type": "application/json"})
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get("status") == "ok":
+                        flare_url = data["solution"]["url"]
+                        if flare_url != url:
+                            url = flare_url
+                            log.info("FlareSolverr resolved → %s", url[:80])
+                            continue
+            except Exception as e:
+                log.error("FlareSolverr error: %s", e)
+            break
+
+        # If no domain matched and not a goto link, stop
+        break
+
+    # Final decode check just in case
+    url = await _decode_go2pics(url)
+
+    if any(d in url for d in TERMINAL_DOMAINS):
+        log.info("✅ PSA bypass success → %s", url[:80])
+        _bcache.put(original_url, url)
+        return url
+
+    log.info("⚠️ PSA bypass ended at non-terminal URL: %s", url[:80])
+    return url
 
 async def perform_psa_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
     query_obj = update.callback_query
@@ -924,7 +2154,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"⏳ Bypassing link for **{link['name']}**... Please wait ~10s", parse_mode=ParseMode.MARKDOWN)
             
             try:
-                final_url = await do_bypass(link['url'])
+                final_url = await do_smart_bypass(link['url'])
                 
                 buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
                 reply_markup = InlineKeyboardMarkup(buttons)
@@ -934,8 +2164,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🎬 Quality: {link['res']} {link['codec']}\n"
                     f"💾 Size: {link['size']}\n"
                     f"🔗 Host: {link['name']}\n\n"
-                    f"`{final_url}`",
+                    f"{final_url}",
                     reply_markup=reply_markup,
+                    disable_web_page_preview=True,
                     parse_mode=ParseMode.MARKDOWN
                 )
             except Exception as e:
@@ -1007,12 +2238,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 final_url = await do_psa_bypass(link['url'])
                 
-                if "goto" in final_url or final_url == link['url']:
-                    btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve Captcha", url=final_url)]])
+                if not any(d in final_url for d in TERMINAL_DOMAINS):
+                    btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve in Browser", url=final_url)]])
                     await query.edit_message_text(
-                        f"⚠️ **Cloudflare Protected!**\n\n"
-                        f"Mini Apps hide the URL, so that won't work! I've switched the button back to a **standard link**.\n\n"
-                        f"Tap it to open your standard browser, click the Turnstile checkbox, and once the page redirects, **copy the URL from your address bar** and paste it here.\n\n"
+                        f"⚠️ **Action Required!**\n\n"
+                        f"This link is protected by Cloudflare or requires a timer.\n\n"
+                        f"1. Tap the button below to open your standard browser.\n"
+                        f"2. Solve any captchas and **wait for all timers/redirects** to finish.\n"
+                        f"3. Once you reach the **FINAL destination** (like get-to.link, mega.nz, pixeldrain), copy that URL and paste it here.\n\n"
                         f"🔗 `{final_url}`",
                         reply_markup=btn,
                         parse_mode=ParseMode.MARKDOWN
@@ -1024,8 +2257,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await query.edit_message_text(
                         f"✅ **Success!**\n\n"
                         f"🔗 Host: {link['name']}\n\n"
-                        f"`{final_url}`",
+                        f"{final_url}",
                         reply_markup=reply_markup,
+                        disable_web_page_preview=True,
                         parse_mode=ParseMode.MARKDOWN
                     )
             except Exception as e:
