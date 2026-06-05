@@ -1587,9 +1587,10 @@ update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     buttons = [
         InlineKeyboardButton("Search Pahe.ink", callback_data=f"src_pahe:{query[:50]}"),
-        InlineKeyboardButton("Search PSA.wf", callback_data=f"src_psa:{query[:50]}")
+        InlineKeyboardButton("Search PSA.wf", callback_data=f"src_psa:{query[:50]}"),
+        InlineKeyboardButton("Search Both", callback_data=f"src_both:{query[:50]}")
     ]
-    reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 2))
+    reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
     await update.message.reply_text(f"🔍 Where do you want to search for `{query}`?", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
 async def perform_pahe_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
@@ -2019,6 +2020,44 @@ async def perform_psa_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
         log.error(f"PSA Search error: {traceback.format_exc()}")
         await query_obj.edit_message_text(f"❌ Error searching PSA: {e}")
 
+async def perform_both_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
+    query_obj = update.callback_query
+    await query_obj.edit_message_text(f"🔍 Searching Pahe & PSA for `{query}`...", parse_mode=ParseMode.MARKDOWN)
+    
+    try:
+        import psa_core
+        pahe_task = api_search(query)
+        psa_task = asyncio.to_thread(psa_core.search_psa, query)
+        
+        pahe_res, psa_res = await asyncio.gather(pahe_task, psa_task, return_exceptions=True)
+        
+        pahe_results = pahe_res if not isinstance(pahe_res, Exception) else []
+        psa_results = psa_res if not isinstance(psa_res, Exception) else []
+        
+        if not pahe_results and not psa_results:
+            await query_obj.edit_message_text(f"❌ No results found for `{query}`.", parse_mode=ParseMode.MARKDOWN)
+            return
+            
+        buttons = []
+        for r in pahe_results[:5]:
+            text = f"🟢 {'📺' if r['is_series'] else '🎬'} {r['title']}"
+            if r['year']: text += f" ({r['year']})"
+            buttons.append(InlineKeyboardButton(text, callback_data=f"sel:{r['id']}"))
+            
+        for r in psa_results[:5]:
+            text = f"🟣 🎬 {r['title'][:40]}"
+            idx = len(context.user_data.get('psa_urls', []))
+            if 'psa_urls' not in context.user_data:
+                context.user_data['psa_urls'] = []
+            context.user_data['psa_urls'].append(r['link'])
+            buttons.append(InlineKeyboardButton(text, callback_data=f"psa_sel:{idx}"))
+            
+        reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
+        await query_obj.edit_message_text(f"✅ Found {len(pahe_results)+len(psa_results)} results for `{query}`.\n🟢 = Pahe  🟣 = PSA", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        log.error(f"Search Both error: {traceback.format_exc()}")
+        await query_obj.edit_message_text(f"❌ Error searching: {e}")
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2030,6 +2069,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await perform_pahe_search(update, context, data.split(":", 1)[1])
             elif data.startswith("src_psa:"):
                 await perform_psa_search(update, context, data.split(":", 1)[1])
+            elif data.startswith("src_both:"):
+                await perform_both_search(update, context, data.split(":", 1)[1])
             return
 
         if data.startswith("sel:"):
