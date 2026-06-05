@@ -8,13 +8,20 @@ import logging
 import re
 import time
 import traceback
+from uuid import uuid4
 from typing import Dict, List
 
 import psa_core
 import database
 import httpx
 from playwright.async_api import async_playwright
-from telegram import Update
+from telegram import (
+    Update, 
+    InlineQueryResultArticle, 
+    InputTextMessageContent,
+    InlineKeyboardButton, 
+    InlineKeyboardMarkup
+)
 from telegram.constants import ParseMode
 from telegram.ext import (
     ApplicationBuilder,
@@ -22,6 +29,7 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     CallbackQueryHandler,
+    InlineQueryHandler,
     filters,
 )
 
@@ -105,6 +113,12 @@ async def api_search(q: str) -> list[dict]:
         content = p.get("content", {}).get("rendered", "")
         yr = re.search(r"\b((?:19|20)\d{2})\b", title)
         rt = re.search(r"Rating:\s*([\d.]+)\s*/\s*10", content)
+        img_match = re.search(r'<img[^>]+src="([^">]+)"', content)
+        image = img_match.group(1) if img_match else ""
+        
+        excerpt = html.unescape(p.get("excerpt", {}).get("rendered", ""))
+        excerpt = re.sub(r'<[^>]+>', '', excerpt).strip()
+        
         genres = [g.title() for g in
                   ["action","adventure","sci-fi","drama","comedy","horror",
                    "thriller","romance","mystery","crime","animation","fantasy"]
@@ -114,6 +128,8 @@ async def api_search(q: str) -> list[dict]:
             "id": p.get("id"), "title": title,
             "year": yr.group(1) if yr else "",
             "rating": rt.group(1) if rt else "",
+            "image": image,
+            "synopsis": excerpt,
             "genres": genres[:3], "is_series": is_series,
         })
 
@@ -184,6 +200,13 @@ async def api_detail(pid: int) -> dict:
     content = p.get("content", {}).get("rendered", "")
     yr = re.search(r"\b((?:19|20)\d{2})\b", title)
     rt = re.search(r"Rating:\s*([\d.]+)\s*/\s*10", content)
+    
+    img_match = re.search(r'<img[^>]+src="([^">]+)"', content)
+    image = img_match.group(1) if img_match else ""
+    
+    excerpt = html.unescape(p.get("excerpt", {}).get("rendered", ""))
+    excerpt = re.sub(r'<[^>]+>', '', excerpt).strip()
+    
     genres = [g.title() for g in
               ["action","adventure","sci-fi","drama","comedy","horror",
                "thriller","romance","mystery","crime","animation","fantasy"]
@@ -207,6 +230,7 @@ async def api_detail(pid: int) -> dict:
 
     out = {"id": pid, "title": title, "year": yr.group(1) if yr else "",
            "rating": rt.group(1) if rt else "", "genres": genres[:4],
+           "image": image, "synopsis": excerpt,
            "episodes": episodes, "movie_dls": movie_dls}
     _dcache.put(pid, out)
     return out
@@ -1512,8 +1536,68 @@ E = html.escape
 def _build_menu(buttons, n_cols):
     return [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
 
+async def show_pahe_details(edit_func, pid: int, context: ContextTypes.DEFAULT_TYPE):
+    details = await api_detail(pid)
+    
+    msg_text = f"🎬 **{details['title']}**"
+    if details.get('year'): msg_text += f" ({details['year']})"
+    if details.get('rating'): msg_text += f"\n⭐ Rating: {details['rating']}"
+    if details.get('genres'): msg_text += f"\n🎭 Genres: {', '.join(details['genres'])}"
+    if details.get('synopsis'): msg_text += f"\n\n_{details['synopsis']}_"
+    if details.get('image'): msg_text = f"[​​​​​​​​​​​]({details['image']})" + msg_text
+    
+    if details.get("episodes"):
+        context.user_data['details'] = details
+        buttons = []
+        for idx, ep in enumerate(details["episodes"]):
+            buttons.append(InlineKeyboardButton(ep["ep"], callback_data=f"ep:{idx}"))
+        
+        reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 2))
+        await edit_func(f"{msg_text}\n\n📺 Select an episode:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        return
+
+    # Group qualities for movies
+    dls = details.get("movie_dls", [])
+    if not dls:
+        await edit_func("❌ No download links found for this post.")
+        return
+        
+    context.user_data['dls'] = dls  # Store in context for next steps
+    
+    # Group by resolution/codec
+    groups = {}
+    for d in dls:
+        k = f"{d['res']} {d['codec']} ({d['size']})".strip()
+        if k not in groups:
+            groups[k] = []
+        groups[k].append(d)
+        
+    context.user_data['groups'] = groups
+    
+    buttons = []
+    for k in groups.keys():
+        # use md5 hash for callback data to avoid 64 byte limit
+        h = hashlib.md5(k.encode()).hexdigest()[:8]
+        context.user_data[f"grp_{h}"] = k
+        buttons.append(InlineKeyboardButton(k, callback_data=f"qual:{h}"))
+        
+    buttons.append(InlineKeyboardButton("⬅️ Back to Search", callback_data="ignore"))
+    reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
+    
+    await edit_func(f"{msg_text}\n\n💿 Select Quality:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await database.add_user(update.effective_user.id)
+    
+    args = context.args
+    if args and args[0].startswith("pahe_"):
+        pid = int(args[0].split("_")[1])
+        msg = await update.message.reply_text("⏳ Fetching details...")
+        async def do_edit(text, **kwargs):
+            await msg.edit_text(text, **kwargs)
+        await show_pahe_details(do_edit, pid, context)
+        return
+        
     msg = (
         "🎬 **Welcome to Felixer Bot!**\n\n"
         "Just **type the name of a movie or TV show** below to search for it.\n"
@@ -1619,6 +1703,47 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
     await update.message.reply_text(f"🔍 Where do you want to search for `{query}`?", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.inline_query.query.strip()
+    if not query:
+        return
+        
+    try:
+        results = await api_search(query)
+        if not results:
+            await update.inline_query.answer([], cache_time=300)
+            return
+            
+        inline_results = []
+        bot_username = context.bot.username
+        
+        for r in results[:15]:
+            title = f"{'📺' if r['is_series'] else '🎬'} {r['title']}"
+            if r['year']: title += f" ({r['year']})"
+            
+            deep_link = f"https://t.me/{bot_username}?start=pahe_{r['id']}"
+            
+            desc = "Search on Pahe"
+            if r['rating']: desc = f"Rating: {r['rating']}⭐"
+            
+            msg = (
+                f"🎬 **{title}**\n\n"
+                f"👉 [Click here to bypass and download]({deep_link})"
+            )
+            
+            inline_results.append(
+                InlineQueryResultArticle(
+                    id=str(uuid4()),
+                    title=title,
+                    description=desc,
+                    input_message_content=InputTextMessageContent(msg, parse_mode=ParseMode.MARKDOWN)
+                )
+            )
+            
+        await update.inline_query.answer(inline_results, cache_time=300)
+    except Exception as e:
+        log.error(f"Inline query error: {e}")
 
 async def render_search_page(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int):
     items = context.user_data.get('search_items', [])
@@ -2146,49 +2271,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if data.startswith("sel:"):
             pid = int(data.split(":")[1])
-            await query.edit_message_text("⏳ Fetching details...")
-            details = await api_detail(pid)
-            
-            if details.get("episodes"):
-                context.user_data['details'] = details
-                buttons = []
-                for idx, ep in enumerate(details["episodes"]):
-                    buttons.append(InlineKeyboardButton(ep["ep"], callback_data=f"ep:{idx}"))
-                
-                reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 2))
-                await query.edit_message_text(f"📺 {details['title']}\nSelect an option:", reply_markup=reply_markup)
-                return
-
-            # Group qualities for movies
-            dls = details.get("movie_dls", [])
-            if not dls:
-                await query.edit_message_text("❌ No download links found for this post.")
-                return
-                
-            context.user_data['dls'] = dls  # Store in context for next steps
-            
-            # Group by resolution/codec
-            groups = {}
-            for d in dls:
-                k = f"{d['res']} {d['codec']} ({d['size']})".strip()
-                if k not in groups:
-                    groups[k] = []
-                groups[k].append(d)
-                
-            context.user_data['groups'] = groups
-            
-            buttons = []
-            for k in groups.keys():
-                # use md5 hash for callback data to avoid 64 byte limit
-                h = hashlib.md5(k.encode()).hexdigest()[:8]
-                context.user_data[f"grp_{h}"] = k
-                buttons.append(InlineKeyboardButton(k, callback_data=f"qual:{h}"))
-                
-            buttons.append(InlineKeyboardButton("⬅️ Back to Search (Type new name)", callback_data="ignore"))
-            reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
-            
-            text = f"🎬 {details['title']}\nSelect quality:"
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            async def do_edit(text, **kwargs):
+                await query.edit_message_text(text, **kwargs)
+            await do_edit("⏳ Fetching details...")
+            await show_pahe_details(do_edit, pid, context)
+            return
 
         elif data.startswith("ep:"):
             ep_idx = int(data.split(":")[1])
@@ -2566,10 +2653,11 @@ def main():
     app.add_handler(CommandHandler("search", handle_text))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(InlineQueryHandler(inline_query))
     
     log.info("🚀 Bot starting with interactive buttons...")
-    # Explicitly allow callback_query updates
-    app.run_polling(allowed_updates=["message", "callback_query"])
+    # Explicitly allow callback_query and inline_query updates
+    app.run_polling(allowed_updates=["message", "callback_query", "inline_query"])
 
 if __name__ == "__main__":
     main()
