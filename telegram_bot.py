@@ -1155,7 +1155,7 @@ UNIVERSAL_USERSCRIPT_DOMAINS = [
 
 
 ALL_SHORTLINK_DOMAINS = (
-    TEKNOASIAN_DOMAINS + BLOGMYSTT_DOMAINS + GETLINK_DOMAINS +
+    TEKNOASIAN_DOMAINS + BLOGMYSTT_DOMAINS +
     LINEGEE_DOMAINS + SPACETICA_DOMAINS + WORDCOUNTER_DOMAINS + UNIVERSAL_USERSCRIPT_DOMAINS
 )
 
@@ -1444,12 +1444,6 @@ async def do_bypass(url: str) -> str:
                 page = await ctx.new_page()
 
                 # Block images, fonts, css to speed up loading significantly
-                async def intercept_route(route):
-                    if route.request.resource_type in ["image", "stylesheet", "font", "media", "other"]:
-                        await route.abort()
-                    else:
-                        await route.continue_()
-                await ctx.route("**/*", intercept_route)
 
                 # Inject timer speedup BEFORE navigation (like the userscript)
                 # The JS itself checks the hostname to avoid breaking specific sites
@@ -1643,7 +1637,7 @@ async def do_smart_bypass(url: str) -> str:
         # Try native bypass first
         next_url = await do_psa_bypass(current_url)
         
-        if any(d in next_url for d in TERMINAL_DOMAINS):
+        if any(d in next_url for d in TERMINAL_DOMAINS) or _match_domain(next_url, GETLINK_DOMAINS):
             return next_url
             
         # If native didn't finish it, and it's still a shortlink
@@ -2008,7 +2002,7 @@ SHRINKME_DOMAINS = [
 TERMINAL_DOMAINS = [
     "mega.nz", "drive.google.com", "pixeldrain.com", "get-to.link",
     "gofile.io", "1drv.ms", "1fichier.com", "buzzheavier.com",
-    "mediafire.com", "qiwi.gg",
+    "mediafire.com", "qiwi.gg", "pahe.plus", "oii.la", "tpi.li", "old.pahe.plus"
 ]
 
 
@@ -2469,25 +2463,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 finally:
                     progress_task.cancel()
                 
-                if final_url == original_url or _match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS):
-                    raise Exception("Bypass loop stuck on shortlink.")
-                
                 await database.increment_stat('bypasses')
                 await database.put_cached_link(original_url, final_url)
                 
-                buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
-                reply_markup = InlineKeyboardMarkup(buttons)
-                
-                await query.edit_message_text(
-                    f"✅ **Success!**\n\n"
-                    f"🎬 Quality: {link['res']} {link['codec']}\n"
-                    f"💾 Size: {link['size']}\n"
-                    f"🔗 Host: {link['name']}\n\n"
-                    f"{final_url}",
-                    reply_markup=reply_markup,
-                    disable_web_page_preview=True,
-                    parse_mode=ParseMode.MARKDOWN
-                )
+                if final_url == original_url or (_match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS) and not any(d in final_url for d in TERMINAL_DOMAINS)):
+                    buttons = [[InlineKeyboardButton("🔐 Solve in Browser", url=final_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    msg = f"❌ **Bypass Incomplete**\n\nThe bot got stuck on this shortlink. You can try to bypass it manually below.\n\n🔗 `{final_url}`"
+                    await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                else:
+                    buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    
+                    await query.edit_message_text(
+                        f"✅ **Success!**\n\n"
+                        f"🎬 Quality: {link['res']} {link['codec']}\n"
+                        f"💾 Size: {link['size']}\n"
+                        f"🔗 Host: {link['name']}\n\n"
+                        f"{final_url}",
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
             except Exception as e:
                 await database.increment_stat('failures')
                 log.error(f"Bypass error: {traceback.format_exc()}")
@@ -2554,6 +2551,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             link = links[idx]
             original_url = link['url']
+            
+            if "psa.wf/goto/" in original_url:
+                buttons = [[InlineKeyboardButton("🔐 Solve in Browser", url=original_url)]]
+                reply_markup = InlineKeyboardMarkup(buttons)
+                msg = (
+                    f"⚠️ **Action Required**\n\n"
+                    f"1. Open the link below in your browser.\n"
+                    f"2. Verify the Cloudflare captcha and then the hCaptcha.\n"
+                    f"3. Copy the **next URL** and send it back to the bot so it can bypass the rest!\n\n"
+                    f"🔗 `{original_url}`"
+                )
+                await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                return
 
             cached_url = await database.get_cached_link(original_url)
             if cached_url:
@@ -2581,32 +2591,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             try:
                 try:
-                    final_url = await do_psa_bypass(original_url)
+                    final_url = await do_smart_bypass(original_url)
                 finally:
                     progress_task.cancel()
                     
-                if final_url == original_url or _match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS):
-                    raise Exception("PSA bypass stuck on shortlink.")
-                    
                 await database.increment_stat('bypasses')
-                
-                if not any(d in final_url for d in TERMINAL_DOMAINS) and not "://" in final_url:
-                    # Just in case we want to force terminal checks, but wait, krakenfiles might be missed
-                    # Actually, if it didn't raise exception above, it's a success
-                    pass
-                    
                 await database.put_cached_link(original_url, final_url)
-                buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
-                reply_markup = InlineKeyboardMarkup(buttons)
                 
-                await query.edit_message_text(
-                        f"✅ **Success!**\n\n"
-                        f"🔗 Host: {link['name']}\n\n"
-                        f"{final_url}",
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True,
-                        parse_mode=ParseMode.MARKDOWN
-                    )
+                if final_url == original_url or (_match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS) and not any(d in final_url for d in TERMINAL_DOMAINS)):
+                    buttons = [[InlineKeyboardButton("🔐 Solve in Browser", url=final_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    msg = f"❌ **Bypass Incomplete**\n\nThe bot got stuck on this shortlink. You can try to bypass it manually below.\n\n🔗 `{final_url}`"
+                    await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                else:
+                    buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    
+                    await query.edit_message_text(
+                            f"✅ **Success!**\n\n"
+                            f"🔗 Host: {link['name']}\n\n"
+                            f"{final_url}",
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True,
+                            parse_mode=ParseMode.MARKDOWN
+                        )
             except Exception as e:
                 await database.increment_stat('failures')
                 log.error(f"PSA Bypass error: {traceback.format_exc()}")
@@ -2625,6 +2633,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 link = links[idx]
                 original_url = link['url']
                 
+                if "psa.wf/goto/" in original_url:
+                    buttons = [[InlineKeyboardButton("🔐 Solve in Browser", url=original_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    msg = (
+                        f"⚠️ **Action Required**\n\n"
+                        f"1. Open the link below in your browser.\n"
+                        f"2. Verify the Cloudflare captcha and then the hCaptcha.\n"
+                        f"3. Copy the **next URL** and send it back to the bot so it can bypass the rest!\n\n"
+                        f"🔗 `{original_url}`"
+                    )
+                    await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                    return
+                
                 await database.delete_cached_link(original_url)
                 
                 async def do_edit(text, **kwargs):
@@ -2639,22 +2660,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     finally:
                         progress_task.cancel()
                         
-                    if final_url == original_url or _match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS):
-                        raise Exception("Bypass loop stuck on shortlink.")
-                        
                     await database.put_cached_link(original_url, final_url)
-                    buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
-                    reply_markup = InlineKeyboardMarkup(buttons)
-                    await query.edit_message_text(
-                        f"✅ **Refreshed Successfully!**\n\n"
-                        f"🎬 Quality: {link['res']} {link['codec']}\n"
-                        f"💾 Size: {link['size']}\n"
-                        f"🔗 Host: {link['name']}\n\n"
-                        f"{final_url}",
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True,
-                        parse_mode=ParseMode.MARKDOWN
-                    )
+                    
+                    if final_url == original_url or (_match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS) and not any(d in final_url for d in TERMINAL_DOMAINS)):
+                        buttons = [[InlineKeyboardButton("🔐 Solve in Browser", url=final_url)]]
+                        reply_markup = InlineKeyboardMarkup(buttons)
+                        msg = f"❌ **Bypass Incomplete**\n\nThe bot got stuck on this shortlink. You can try to bypass it manually below.\n\n🔗 `{final_url}`"
+                        await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                    else:
+                        buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
+                        reply_markup = InlineKeyboardMarkup(buttons)
+                        await query.edit_message_text(
+                            f"✅ **Refreshed Successfully!**\n\n"
+                            f"🎬 Quality: {link['res']} {link['codec']}\n"
+                            f"💾 Size: {link['size']}\n"
+                            f"🔗 Host: {link['name']}\n\n"
+                            f"{final_url}",
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True,
+                            parse_mode=ParseMode.MARKDOWN
+                        )
                 except Exception as e:
                     log.error(f"Bypass error: {traceback.format_exc()}")
                     buttons = [[InlineKeyboardButton("🔗 Try Manual Link", url=original_url)]]
@@ -2669,6 +2694,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 link = links[idx]
                 original_url = link['url']
                 
+                if "psa.wf/goto/" in original_url:
+                    buttons = [[InlineKeyboardButton("🔐 Solve in Browser", url=original_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    msg = (
+                        f"⚠️ **Action Required**\n\n"
+                        f"1. Open the link below in your browser.\n"
+                        f"2. Verify the Cloudflare captcha and then the hCaptcha.\n"
+                        f"3. Copy the **next URL** and send it back to the bot so it can bypass the rest!\n\n"
+                        f"🔗 `{original_url}`"
+                    )
+                    await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                    return
+                
                 await database.delete_cached_link(original_url)
                 
                 async def do_edit(text, **kwargs):
@@ -2679,24 +2717,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 try:
                     try:
-                        final_url = await do_psa_bypass(original_url)
+                        final_url = await do_smart_bypass(original_url)
                     finally:
                         progress_task.cancel()
                         
-                    if final_url == original_url or _match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS):
-                        raise Exception("PSA bypass stuck on shortlink.")
-                        
                     await database.put_cached_link(original_url, final_url)
-                    buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
-                    reply_markup = InlineKeyboardMarkup(buttons)
-                    await query.edit_message_text(
-                            f"✅ **Refreshed Successfully!**\n\n"
-                            f"🔗 Host: {link['name']}\n\n"
-                            f"{final_url}",
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True,
-                            parse_mode=ParseMode.MARKDOWN
-                        )
+                    
+                    if final_url == original_url or (_match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS) and not any(d in final_url for d in TERMINAL_DOMAINS)):
+                        buttons = [[InlineKeyboardButton("🔐 Solve in Browser", url=final_url)]]
+                        reply_markup = InlineKeyboardMarkup(buttons)
+                        msg = f"❌ **Bypass Incomplete**\n\nThe bot got stuck on this shortlink. You can try to bypass it manually below.\n\n🔗 `{final_url}`"
+                        await query.edit_message_text(msg, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                    else:
+                        buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
+                        reply_markup = InlineKeyboardMarkup(buttons)
+                        await query.edit_message_text(
+                                f"✅ **Refreshed Successfully!**\n\n"
+                                f"🔗 Host: {link['name']}\n\n"
+                                f"{final_url}",
+                                reply_markup=reply_markup,
+                                disable_web_page_preview=True,
+                                parse_mode=ParseMode.MARKDOWN
+                            )
                 except Exception as e:
                     log.error(f"PSA Bypass error: {traceback.format_exc()}")
                     buttons = [[InlineKeyboardButton("🔗 Try Manual Link", url=original_url)]]
