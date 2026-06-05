@@ -2469,6 +2469,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 finally:
                     progress_task.cancel()
                 
+                if final_url == original_url or _match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS):
+                    raise Exception("Bypass loop stuck on shortlink.")
+                
                 await database.increment_stat('bypasses')
                 await database.put_cached_link(original_url, final_url)
                 
@@ -2570,7 +2573,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
 
-            await query.edit_message_text(f"⏳ Bypassing PSA link for **{link['name']}**... Please wait ~20s", parse_mode=ParseMode.MARKDOWN)
+            async def do_edit(text, **kwargs):
+                await query.edit_message_text(text, **kwargs)
+                
+            await do_edit(f"⏳ Bypassing PSA link for **{link['name']}**... Please wait ~20s", parse_mode=ParseMode.MARKDOWN)
+            progress_task = asyncio.create_task(progress_indicator(do_edit, f"⏳ Bypassing PSA link for **{link['name']}**..."))
             
             try:
                 try:
@@ -2578,26 +2585,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 finally:
                     progress_task.cancel()
                     
+                if final_url == original_url or _match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS):
+                    raise Exception("PSA bypass stuck on shortlink.")
+                    
                 await database.increment_stat('bypasses')
                 
-                if not any(d in final_url for d in TERMINAL_DOMAINS):
-                    btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve in Browser", url=final_url)]])
-                    await query.edit_message_text(
-                        f"⚠️ **Action Required!**\n\n"
-                        f"This link is protected by Cloudflare or requires a timer.\n\n"
-                        f"1. Tap the button below to open your standard browser.\n"
-                        f"2. Solve any captchas and **wait for all timers/redirects** to finish.\n"
-                        f"3. Once you reach the **FINAL destination** (like get-to.link, mega.nz, pixeldrain), copy that URL and paste it here.\n\n"
-                        f"🔗 `{final_url}`",
-                        reply_markup=btn,
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                else:
-                    await database.put_cached_link(original_url, final_url)
-                    buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
-                    reply_markup = InlineKeyboardMarkup(buttons)
+                if not any(d in final_url for d in TERMINAL_DOMAINS) and not "://" in final_url:
+                    # Just in case we want to force terminal checks, but wait, krakenfiles might be missed
+                    # Actually, if it didn't raise exception above, it's a success
+                    pass
                     
-                    await query.edit_message_text(
+                await database.put_cached_link(original_url, final_url)
+                buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
+                reply_markup = InlineKeyboardMarkup(buttons)
+                
+                await query.edit_message_text(
                         f"✅ **Success!**\n\n"
                         f"🔗 Host: {link['name']}\n\n"
                         f"{final_url}",
@@ -2636,6 +2638,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         final_url = await do_smart_bypass(original_url)
                     finally:
                         progress_task.cancel()
+                        
+                    if final_url == original_url or _match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS):
+                        raise Exception("Bypass loop stuck on shortlink.")
                         
                     await database.put_cached_link(original_url, final_url)
                     buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
@@ -2678,23 +2683,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     finally:
                         progress_task.cancel()
                         
-                    if not any(d in final_url for d in TERMINAL_DOMAINS):
-                        btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve in Browser", url=final_url)]])
-                        await query.edit_message_text(
-                            f"⚠️ **Action Required!**\n\n"
-                            f"This link is protected by Cloudflare or requires a timer.\n\n"
-                            f"1. Tap the button below to open your standard browser.\n"
-                            f"2. Solve any captchas and **wait for all timers/redirects** to finish.\n"
-                            f"3. Once you reach the **FINAL destination** (like get-to.link, mega.nz, pixeldrain), copy that URL and paste it here.\n\n"
-                            f"🔗 `{final_url}`",
-                            reply_markup=btn,
-                            parse_mode=ParseMode.MARKDOWN
-                        )
-                    else:
-                        await database.put_cached_link(original_url, final_url)
-                        buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
-                        reply_markup = InlineKeyboardMarkup(buttons)
-                        await query.edit_message_text(
+                    if final_url == original_url or _match_domain(final_url, ALL_SHORTLINK_DOMAINS + SHRINKME_DOMAINS + ASTRO_ISLAND_DOMAINS + REDIRECT_PAGE_DOMAINS):
+                        raise Exception("PSA bypass stuck on shortlink.")
+                        
+                    await database.put_cached_link(original_url, final_url)
+                    buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
+                    reply_markup = InlineKeyboardMarkup(buttons)
+                    await query.edit_message_text(
                             f"✅ **Refreshed Successfully!**\n\n"
                             f"🔗 Host: {link['name']}\n\n"
                             f"{final_url}",
