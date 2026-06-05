@@ -1513,6 +1513,7 @@ def _build_menu(buttons, n_cols):
     return [buttons[i:i + n_cols] for i in range(0, len(buttons), n_cols)]
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await database.add_user(update.effective_user.id)
     msg = (
         "🎬 **Welcome to Felixer Bot!**\n\n"
         "Just **type the name of a movie or TV show** below to search for it.\n"
@@ -1552,16 +1553,19 @@ async def do_smart_bypass(url: str) -> str:
         
     return current_url
 
-async def handle_text(
-update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip()
     if query.startswith('/'): return
+    
+    await database.add_user(update.effective_user.id)
+    await database.increment_stat('searches')
     
     if query.startswith("http://") or query.startswith("https://"):
         await update.message.reply_text(f"🔗 Detected a link. Attempting bypass...", parse_mode=ParseMode.MARKDOWN)
         try:
             await update.message.reply_text(f"🚀 Processing link...", parse_mode=ParseMode.MARKDOWN)
             final_link = await do_smart_bypass(query)
+            await database.increment_stat('bypasses')
                     
             if not any(d in final_link for d in TERMINAL_DOMAINS):
                 btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Solve in Browser", url=final_link)]])
@@ -1582,6 +1586,7 @@ update: Update, context: ContextTypes.DEFAULT_TYPE):
                     disable_web_page_preview=True
                 )
         except Exception as e:
+            await database.increment_stat('failures')
             await update.message.reply_text(f"❌ Failed to bypass: {e}")
         return
 
@@ -2196,6 +2201,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             cached_url = await database.get_cached_link(original_url)
             if cached_url:
+                await database.increment_stat('cache_hits')
                 buttons = [
                     [InlineKeyboardButton(f"📥 Open in {link['name']}", url=cached_url)],
                     [InlineKeyboardButton("♻️ Refresh Link", callback_data=f"refresh:pahe:{idx}")]
@@ -2217,6 +2223,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             try:
                 final_url = await do_smart_bypass(original_url)
+                await database.increment_stat('bypasses')
                 
                 await database.put_cached_link(original_url, final_url)
                 
@@ -2234,6 +2241,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.MARKDOWN
                 )
             except Exception as e:
+                await database.increment_stat('failures')
                 log.error(f"Bypass error: {traceback.format_exc()}")
                 buttons = [[InlineKeyboardButton("🔗 Try Manual Link", url=link['url'])]]
                 reply_markup = InlineKeyboardMarkup(buttons)
@@ -2301,6 +2309,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             cached_url = await database.get_cached_link(original_url)
             if cached_url:
+                await database.increment_stat('cache_hits')
                 buttons = [
                     [InlineKeyboardButton(f"📥 Open in {link['name']}", url=cached_url)],
                     [InlineKeyboardButton("♻️ Refresh Link", callback_data=f"refresh:psa:{idx}")]
@@ -2320,6 +2329,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             try:
                 final_url = await do_psa_bypass(original_url)
+                await database.increment_stat('bypasses')
                 
                 if not any(d in final_url for d in TERMINAL_DOMAINS):
                     btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve in Browser", url=final_url)]])
@@ -2347,6 +2357,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode=ParseMode.MARKDOWN
                     )
             except Exception as e:
+                await database.increment_stat('failures')
                 log.error(f"PSA Bypass error: {traceback.format_exc()}")
                 buttons = [[InlineKeyboardButton("🔗 Try Manual Link", url=link['url'])]]
                 reply_markup = InlineKeyboardMarkup(buttons)
@@ -2438,10 +2449,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(application):
     await database.init_db()
 
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await database.add_user(update.effective_user.id)
+    stats = await database.get_all_stats()
+    
+    msg = (
+        "📊 **Bot Statistics**\n\n"
+        f"👥 Unique Users: `{stats.get('users', 0)}`\n"
+        f"🔍 Total Searches: `{stats.get('searches', 0)}`\n"
+        f"✅ Links Bypassed: `{stats.get('bypasses', 0)}`\n"
+        f"⚡ Cache Hits: `{stats.get('cache_hits', 0)}`\n"
+        f"❌ Failed Bypasses: `{stats.get('failures', 0)}`\n"
+    )
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("search", handle_text))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_callback))
