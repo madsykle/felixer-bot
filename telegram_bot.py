@@ -1553,6 +1553,19 @@ async def do_smart_bypass(url: str) -> str:
         
     return current_url
 
+async def progress_indicator(edit_func, base_text):
+    frames = ["[■□□□□□□□□□]", "[■■□□□□□□□□]", "[■■■□□□□□□□]", "[■■■■□□□□□□]", "[■■■■■□□□□□]", "[■■■■■■□□□□]", "[■■■■■■■□□□]", "[■■■■■■■■□□]", "[■■■■■■■■■□]", "[■■■■■■■■■■]"]
+    i = 0
+    while True:
+        try:
+            await asyncio.sleep(2.0)
+            await edit_func(f"{base_text}\n\n`{frames[i % len(frames)]}`", parse_mode=ParseMode.MARKDOWN)
+            i += 1
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip()
     if query.startswith('/'): return
@@ -1563,8 +1576,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.startswith("http://") or query.startswith("https://"):
         await update.message.reply_text(f"🔗 Detected a link. Attempting bypass...", parse_mode=ParseMode.MARKDOWN)
         try:
-            await update.message.reply_text(f"🚀 Processing link...", parse_mode=ParseMode.MARKDOWN)
-            final_link = await do_smart_bypass(query)
+            msg = await update.message.reply_text(f"🚀 Processing link...", parse_mode=ParseMode.MARKDOWN)
+            
+            async def do_edit(text, **kwargs):
+                await msg.edit_text(text, **kwargs)
+                
+            progress_task = asyncio.create_task(progress_indicator(do_edit, "🚀 Processing link..."))
+            try:
+                final_link = await do_smart_bypass(query)
+            finally:
+                progress_task.cancel()
+                
             await database.increment_stat('bypasses')
                     
             if not any(d in final_link for d in TERMINAL_DOMAINS):
@@ -1598,6 +1620,40 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
     await update.message.reply_text(f"🔍 Where do you want to search for `{query}`?", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
+async def render_search_page(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int):
+    items = context.user_data.get('search_items', [])
+    query = context.user_data.get('search_query', '')
+    
+    ITEMS_PER_PAGE = 8
+    total_pages = max(1, (len(items) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE) if items else 1
+    
+    if page < 0: page = 0
+    if page >= total_pages: page = total_pages - 1
+    
+    start_idx = page * ITEMS_PER_PAGE
+    end_idx = start_idx + ITEMS_PER_PAGE
+    page_items = items[start_idx:end_idx]
+    
+    buttons = []
+    for item in page_items:
+        buttons.append([InlineKeyboardButton(item['text'], callback_data=item['callback_data'])])
+        
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"page:{page-1}"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"page:{page+1}"))
+    if nav_buttons:
+        buttons.append(nav_buttons)
+        
+    reply_markup = InlineKeyboardMarkup(buttons)
+    
+    text = f"✅ Found {len(items)} results for `{query}`.\nPage {page+1}/{total_pages}"
+    if any("🟢" in item['text'] for item in items):
+        text += "\n🟢 = Pahe  🟣 = PSA"
+        
+    await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
 async def perform_pahe_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
     query_obj = update.callback_query
     await query_obj.edit_message_text(f"🔍 Searching Pahe.ink for `{query}`...", parse_mode=ParseMode.MARKDOWN)
@@ -1608,15 +1664,16 @@ async def perform_pahe_search(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query_obj.edit_message_text(f"❌ No results found on Pahe for `{query}`.", parse_mode=ParseMode.MARKDOWN)
             return
             
-        buttons = []
-        for r in results[:10]:
+        items = []
+        for r in results:
             text = f"{'📺' if r['is_series'] else '🎬'} {r['title']}"
             if r['year']: text += f" ({r['year']})"
             if r['rating']: text += f" - {r['rating']}⭐"
-            buttons.append(InlineKeyboardButton(text, callback_data=f"sel:{r['id']}"))
+            items.append({'text': text, 'callback_data': f"sel:{r['id']}"})
             
-        reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
-        await query_obj.edit_message_text(f"✅ Found {len(results)} results on Pahe for `{query}`.\nSelect one:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['search_items'] = items
+        context.user_data['search_query'] = query
+        await render_search_page(update, context, 0)
     except Exception as e:
         log.error(f"Search error: {traceback.format_exc()}")
         await query_obj.edit_message_text(f"❌ Error searching Pahe: {e}")
@@ -2010,17 +2067,19 @@ async def perform_psa_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await query_obj.edit_message_text(f"❌ No results found on PSA for `{query}`.", parse_mode=ParseMode.MARKDOWN)
             return
             
-        buttons = []
-        for r in results[:10]:
-            text = f"🎬 {r['title'][:40]}"
-            idx = len(context.user_data.get('psa_urls', []))
-            if 'psa_urls' not in context.user_data:
-                context.user_data['psa_urls'] = []
-            context.user_data['psa_urls'].append(r['link'])
-            buttons.append(InlineKeyboardButton(text, callback_data=f"psa_sel:{idx}"))
+        items = []
+        if 'psa_urls' not in context.user_data:
+            context.user_data['psa_urls'] = []
             
-        reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
-        await query_obj.edit_message_text(f"✅ Found {len(results)} results on PSA for `{query}`.\nSelect one:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        for r in results:
+            text = f"🎬 {r['title'][:40]}"
+            idx = len(context.user_data['psa_urls'])
+            context.user_data['psa_urls'].append(r['link'])
+            items.append({'text': text, 'callback_data': f"psa_sel:{idx}"})
+            
+        context.user_data['search_items'] = items
+        context.user_data['search_query'] = query
+        await render_search_page(update, context, 0)
     except Exception as e:
         log.error(f"PSA Search error: {traceback.format_exc()}")
         await query_obj.edit_message_text(f"❌ Error searching PSA: {e}")
@@ -2043,22 +2102,24 @@ async def perform_both_search(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query_obj.edit_message_text(f"❌ No results found for `{query}`.", parse_mode=ParseMode.MARKDOWN)
             return
             
-        buttons = []
-        for r in pahe_results[:5]:
+        items = []
+        for r in pahe_results:
             text = f"🟢 {'📺' if r['is_series'] else '🎬'} {r['title']}"
             if r['year']: text += f" ({r['year']})"
-            buttons.append(InlineKeyboardButton(text, callback_data=f"sel:{r['id']}"))
+            items.append({'text': text, 'callback_data': f"sel:{r['id']}"})
             
-        for r in psa_results[:5]:
+        if 'psa_urls' not in context.user_data:
+            context.user_data['psa_urls'] = []
+            
+        for r in psa_results:
             text = f"🟣 🎬 {r['title'][:40]}"
-            idx = len(context.user_data.get('psa_urls', []))
-            if 'psa_urls' not in context.user_data:
-                context.user_data['psa_urls'] = []
+            idx = len(context.user_data['psa_urls'])
             context.user_data['psa_urls'].append(r['link'])
-            buttons.append(InlineKeyboardButton(text, callback_data=f"psa_sel:{idx}"))
+            items.append({'text': text, 'callback_data': f"psa_sel:{idx}"})
             
-        reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
-        await query_obj.edit_message_text(f"✅ Found {len(pahe_results)+len(psa_results)} results for `{query}`.\n🟢 = Pahe  🟣 = PSA", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        context.user_data['search_items'] = items
+        context.user_data['search_query'] = query
+        await render_search_page(update, context, 0)
     except Exception as e:
         log.error(f"Search Both error: {traceback.format_exc()}")
         await query_obj.edit_message_text(f"❌ Error searching: {e}")
@@ -2076,6 +2137,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await perform_psa_search(update, context, data.split(":", 1)[1])
             elif data.startswith("src_both:"):
                 await perform_both_search(update, context, data.split(":", 1)[1])
+            return
+
+        if data.startswith("page:"):
+            page = int(data.split(":")[1])
+            await render_search_page(update, context, page)
             return
 
         if data.startswith("sel:"):
@@ -2219,11 +2285,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
 
-            await query.edit_message_text(f"⏳ Bypassing link for **{link['name']}**... Please wait ~10s", parse_mode=ParseMode.MARKDOWN)
+            async def do_edit(text, **kwargs):
+                await query.edit_message_text(text, **kwargs)
+                
+            await do_edit(f"⏳ Bypassing link for **{link['name']}**... Please wait ~10s", parse_mode=ParseMode.MARKDOWN)
+            progress_task = asyncio.create_task(progress_indicator(do_edit, f"⏳ Bypassing link for **{link['name']}**..."))
             
             try:
                 final_url = await do_smart_bypass(original_url)
-                await database.increment_stat('bypasses')
+            finally:
+                progress_task.cancel()
+                
+            await database.increment_stat('bypasses')
                 
                 await database.put_cached_link(original_url, final_url)
                 
@@ -2376,10 +2449,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 await database.delete_cached_link(original_url)
                 
-                await query.edit_message_text(f"⏳ Refreshing bypass for **{link['name']}**... Please wait ~10s", parse_mode=ParseMode.MARKDOWN)
+                async def do_edit(text, **kwargs):
+                    await query.edit_message_text(text, **kwargs)
+                    
+                await do_edit(f"⏳ Refreshing bypass for **{link['name']}**... Please wait ~10s", parse_mode=ParseMode.MARKDOWN)
+                progress_task = asyncio.create_task(progress_indicator(do_edit, f"⏳ Refreshing bypass for **{link['name']}**..."))
+                
                 try:
                     final_url = await do_smart_bypass(original_url)
-                    await database.put_cached_link(original_url, final_url)
+                finally:
+                    progress_task.cancel()
+                    
+                await database.put_cached_link(original_url, final_url)
                     buttons = [[InlineKeyboardButton(f"📥 Open in {link['name']}", url=final_url)]]
                     reply_markup = InlineKeyboardMarkup(buttons)
                     await query.edit_message_text(
@@ -2408,9 +2489,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 await database.delete_cached_link(original_url)
                 
-                await query.edit_message_text(f"⏳ Refreshing PSA bypass for **{link['name']}**... Please wait ~20s", parse_mode=ParseMode.MARKDOWN)
+                async def do_edit(text, **kwargs):
+                    await query.edit_message_text(text, **kwargs)
+                    
+                await do_edit(f"⏳ Refreshing PSA bypass for **{link['name']}**... Please wait ~20s", parse_mode=ParseMode.MARKDOWN)
+                progress_task = asyncio.create_task(progress_indicator(do_edit, f"⏳ Refreshing PSA bypass for **{link['name']}**..."))
+                
                 try:
                     final_url = await do_psa_bypass(original_url)
+                finally:
+                    progress_task.cancel()
                     if not any(d in final_url for d in TERMINAL_DOMAINS):
                         btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔐 Solve in Browser", url=final_url)]])
                         await query.edit_message_text(
