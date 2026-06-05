@@ -77,16 +77,19 @@ def _parse_dls(content: str) -> list[dict]:
             continue
 
         chunks = re.split(r'(?:&nbsp;\s*<br\s*/?>\s*)+', box)
+        last_text = ""
         for chunk in chunks:
             if 'shortc-button' not in chunk:
-                if '<b>' in chunk:
-                    for segment in chunk.split('<b>'):
-                        if segment.strip() and '</b>' in segment:
-                            chunks.append(segment.replace('</b>', ''))
+                text = re.sub(r'<[^>]+>', '', chunk).strip()
+                if text:
+                    last_text = text
                 continue
 
             head = chunk.split('<a href')[0]
             quality_text = re.sub(r'<[^>]+>', '', head).strip()
+            if last_text and last_text not in quality_text:
+                quality_text = f"{last_text} {quality_text}".strip()
+            
             size_match = re.search(r'(\d+\.?\d*\s*(?:GB|MB|KB))', quality_text, re.I)
             resolution_match = re.search(r'(\d+p)', quality_text, re.I)
             size = size_match.group(1).strip() if size_match else ''

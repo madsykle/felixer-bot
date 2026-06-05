@@ -2509,19 +2509,69 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text("❌ No download links found for this post.")
                 return
                 
+            groups = {}
+            regex = r'(S\d+E\d+|S\d+(?:-S?\d+)?(?:\.COMPLETE)?|Season(?:s)?[\.\s]\d+(?:-\d+)?|SEASON\.\d+|Complete[\.\s]?Series)'
+            for k, links in qualities.items():
+                ep_match = re.search(regex, k, re.I)
+                if ep_match:
+                    ep = ep_match.group(1).upper()
+                    if ep.startswith('SEASON.'):
+                        ep = ep.replace('.', ' ')
+                    elif ep.startswith('SEASON'):
+                        ep = ep.replace('.', ' ') # "Season.1-3" -> "SEASON 1-3" (handled by upper(), but remove dot)
+                        ep = re.sub(r'SEASON\s*\.\s*', 'SEASON ', ep, flags=re.I)
+                    if ep not in groups:
+                        groups[ep] = {}
+                    name = k[ep_match.end():].strip('. -')
+                    if not name:
+                        name = "Standard"
+                    groups[ep][name] = links
+                else:
+                    if "Movies" not in groups:
+                        groups["Movies"] = {}
+                    groups["Movies"][k] = links
+
+            context.user_data['psa_grouped'] = groups
+            
+            if len(groups) == 1 and "Movies" in groups:
+                context.user_data['psa_groups'] = groups["Movies"]
+                buttons = []
+                for k in groups["Movies"].keys():
+                    h = hashlib.md5(k.encode()).hexdigest()[:8]
+                    context.user_data[f"psa_grp_{h}"] = k
+                    buttons.append(InlineKeyboardButton(k[:40], callback_data=f"psa_qual:{h}"))
+                buttons.append(InlineKeyboardButton("⬅️ Back to Search", callback_data="ignore"))
+                reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
+                await query.edit_message_text("🎬 Select quality from PSA:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            else:
+                buttons = []
+                for ep in groups.keys():
+                    h = hashlib.md5(ep.encode()).hexdigest()[:8]
+                    context.user_data[f"psa_ep_{h}"] = ep
+                    buttons.append(InlineKeyboardButton(ep, callback_data=f"psa_ep:{h}"))
+                buttons.append(InlineKeyboardButton("⬅️ Back to Search", callback_data="ignore"))
+                reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 2))
+                await query.edit_message_text("📺 Select an episode/season:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+        elif data.startswith("psa_ep:"):
+            h = data.split(":")[1]
+            ep = context.user_data.get(f"psa_ep_{h}")
+            if not ep:
+                await query.edit_message_text("❌ Session expired. Please search again.")
+                return
+            
+            qualities = context.user_data['psa_grouped'][ep]
             context.user_data['psa_groups'] = qualities
             
             buttons = []
             for k in qualities.keys():
-                h = hashlib.md5(k.encode()).hexdigest()[:8]
-                context.user_data[f"psa_grp_{h}"] = k
-                buttons.append(InlineKeyboardButton(k[:40], callback_data=f"psa_qual:{h}"))
+                hq = hashlib.md5(k.encode()).hexdigest()[:8]
+                context.user_data[f"psa_grp_{hq}"] = k
+                buttons.append(InlineKeyboardButton(k[:40], callback_data=f"psa_qual:{hq}"))
                 
-            buttons.append(InlineKeyboardButton("⬅️ Back to Search (Type new name)", callback_data="ignore"))
+            buttons.append(InlineKeyboardButton("⬅️ Back", callback_data="ignore"))
             reply_markup = InlineKeyboardMarkup(_build_menu(buttons, 1))
-            
-            text = f"🎬 Select quality from PSA:"
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text(f"🎬 Select quality for {ep}:", reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
             
         elif data.startswith("psa_qual:"):
             h = data.split(":")[1]
