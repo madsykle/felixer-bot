@@ -57,19 +57,13 @@ PLAYWRIGHT_SEM = asyncio.Semaphore(3)
 
 class Cache:
     def __init__(self, ttl=600):
-        self._d: dict = {}
-        self._ttl = ttl
+        pass
 
     def get(self, k):
-        if k in self._d:
-            ts, v = self._d[k]
-            if time.time() - ts < self._ttl:
-                return v
-            del self._d[k]
         return None
 
     def put(self, k, v):
-        self._d[k] = (time.time(), v)
+        pass
 
 _scache = Cache(300)
 _dcache = Cache(600)
@@ -1476,7 +1470,7 @@ async def do_bypass(url: str) -> str:
                         direct_result = await _bypass_blogmystt(page)
 
                     if direct_result:
-                        if not _match_domain(direct_result, ALL_SHORTLINK_DOMAINS):
+                        if any(d in direct_result for d in TERMINAL_DOMAINS) or not _match_domain(direct_result, ALL_SHORTLINK_DOMAINS):
                             await br.close()
                             _bcache.put(url, direct_result)
                             log.info("  ✅ bypass → %s", direct_result[:80])
@@ -1637,7 +1631,7 @@ async def do_smart_bypass(url: str) -> str:
         # Try native bypass first
         next_url = await do_psa_bypass(current_url)
         
-        if any(d in next_url for d in TERMINAL_DOMAINS) or _match_domain(next_url, GETLINK_DOMAINS):
+        if any(d in next_url for d in TERMINAL_DOMAINS):
             return next_url
             
         # If native didn't finish it, and it's still a shortlink
@@ -2002,7 +1996,7 @@ SHRINKME_DOMAINS = [
 TERMINAL_DOMAINS = [
     "mega.nz", "drive.google.com", "pixeldrain.com", "get-to.link",
     "gofile.io", "1drv.ms", "1fichier.com", "buzzheavier.com",
-    "mediafire.com", "qiwi.gg", "pahe.plus", "oii.la", "tpi.li", "old.pahe.plus"
+    "mediafire.com", "qiwi.gg", "pahe.plus", "old.pahe.plus"
 ]
 
 

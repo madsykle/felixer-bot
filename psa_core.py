@@ -109,6 +109,11 @@ def get_psa_details(url: str):
             title_text = head.text.strip()
             # If the header doesn't say "Info" or "Download" and isn't empty, it's likely a title
             if title_text and title_text.lower() not in ["info", "download", "screenshots"]:
+                # Check if this sp-wrap contains other sp-wraps (it's just a container)
+                body = sp_wrap.select_one(".sp-body")
+                if body and body.select(".sp-wrap"):
+                    continue
+                    
                 valid_links = []
                 for a in sp_wrap.select(".sp-body a"):
                     href = a.get("href")
